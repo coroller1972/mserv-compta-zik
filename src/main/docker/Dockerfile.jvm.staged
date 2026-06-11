@@ -1,0 +1,44 @@
+####
+# Multi-stage Dockerfile for building and running the Quarkus application in JVM mode.
+#
+# Build:
+#   docker build -f src/main/docker/Dockerfile.jvm.staged -t quarkus/mserv-compta-jvm .
+#
+# Run:
+#   docker run --rm -p 8081:8081 quarkus/mserv-compta-jvm
+####
+
+FROM registry.access.redhat.com/ubi9/openjdk-25:1.24 AS build
+
+WORKDIR /workspace
+
+COPY --chown=185:0 gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
+COPY --chown=185:0 gradle/ gradle/
+
+USER root
+RUN chmod +x ./gradlew && chown -R 185:0 /workspace && chmod -R g=u /workspace
+
+USER 185
+COPY --chown=185:0 src/ src/
+
+RUN ./gradlew --no-daemon clean build -Dquarkus.package.jar.type=fast-jar
+
+FROM registry.access.redhat.com/ubi9/openjdk-25-runtime:1.24
+
+ENV LANGUAGE='en_US:en'
+
+COPY --from=build --chown=185:0 /workspace/build/quarkus-app/lib/ /deployments/lib/
+COPY --from=build --chown=185:0 /workspace/build/quarkus-app/*.jar /deployments/
+COPY --from=build --chown=185:0 /workspace/build/quarkus-app/app/ /deployments/app/
+COPY --from=build --chown=185:0 /workspace/build/quarkus-app/quarkus/ /deployments/quarkus/
+
+USER root
+RUN mkdir -p /documents && chown -R 185:0 /documents && chmod -R g=u /documents
+
+EXPOSE 8081
+
+USER 185
+ENV JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
+ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"
+
+ENTRYPOINT [ "/opt/jboss/container/java/run/run-java.sh" ]

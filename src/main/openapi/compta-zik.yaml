@@ -1,0 +1,703 @@
+openapi: 3.0.3
+info:
+  title: Compta Zik API
+  version: 1.0.0
+  description: API de gestion comptable de l'activite musique.
+servers:
+  - url: /api
+tags:
+  - name: Accounting years
+  - name: Attendance
+  - name: Teachers
+  - name: Musicians
+  - name: Bands
+  - name: Individual courses
+  - name: Documents
+paths:
+  /accounting-years/{year}/snapshot:
+    get:
+      tags: [Accounting years]
+      operationId: getAccountingYearSnapshot
+      parameters:
+        - $ref: '#/components/parameters/Year'
+      responses:
+        '200':
+          description: Snapshot annuel.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountingYearSnapshot'
+  /accounting-years/{year}/settings:
+    put:
+      tags: [Accounting years]
+      operationId: updateSettings
+      parameters:
+        - $ref: '#/components/parameters/Year'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Settings'
+      responses:
+        '200':
+          description: Configuration mise a jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+  /accounting-years/{year}/terms/{termId}/attendance:
+    get:
+      tags: [Accounting years]
+      operationId: listTermAttendance
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+      responses:
+        '200':
+          description: Presences du trimestre.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Attendance'
+  /accounting-years/{year}/terms/{termId}/billing:
+    get:
+      tags: [Accounting years]
+      operationId: getTermBilling
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+      responses:
+        '200':
+          description: Synthese de facturation du trimestre.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSummary'
+  /accounting-years/{year}/terms/{termId}/student-invoices:
+    post:
+      tags: [Accounting years]
+      operationId: prepareStudentInvoices
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+      responses:
+        '202':
+          description: Factures eleves preparees.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GeneratedDocument'
+  /accounting-years/{year}/terms/{termId}/student-invoices/summary:
+    post:
+      tags: [Accounting years]
+      operationId: prepareStudentInvoiceSummary
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+      responses:
+        '202':
+          description: PDF de synthese des factures eleves prepare.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedDocument'
+  /accounting-years/{year}/terms/{termId}/teacher-invoice-requests:
+    post:
+      tags: [Accounting years]
+      operationId: prepareTeacherInvoiceRequests
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+      responses:
+        '202':
+          description: Demandes de facture professeurs preparees.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GeneratedDocument'
+  /attendance:
+    put:
+      tags: [Attendance]
+      operationId: upsertAttendance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Attendance'
+      responses:
+        '200':
+          description: Presence mise a jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attendance'
+  /teachers:
+    get:
+      tags: [Teachers]
+      operationId: listTeachers
+      responses:
+        '200':
+          description: Professeurs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Teacher'
+    post:
+      tags: [Teachers]
+      operationId: createTeacher
+      requestBody:
+        $ref: '#/components/requestBodies/TeacherBody'
+      responses:
+        '201':
+          description: Professeur cree.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Teacher'
+  /teachers/{id}:
+    put:
+      tags: [Teachers]
+      operationId: updateTeacher
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        $ref: '#/components/requestBodies/TeacherBody'
+      responses:
+        '200':
+          description: Professeur mis a jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Teacher'
+    delete:
+      tags: [Teachers]
+      operationId: deleteTeacher
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Professeur supprime ou desactive.
+  /musicians:
+    get:
+      tags: [Musicians]
+      operationId: listMusicians
+      responses:
+        '200':
+          description: Musiciens.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Musician'
+    post:
+      tags: [Musicians]
+      operationId: createMusician
+      requestBody:
+        $ref: '#/components/requestBodies/MusicianBody'
+      responses:
+        '201':
+          description: Musicien cree.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Musician'
+  /musicians/{id}:
+    put:
+      tags: [Musicians]
+      operationId: updateMusician
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        $ref: '#/components/requestBodies/MusicianBody'
+      responses:
+        '200':
+          description: Musicien mis a jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Musician'
+    delete:
+      tags: [Musicians]
+      operationId: deleteMusician
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Musicien supprime ou desactive.
+  /bands:
+    get:
+      tags: [Bands]
+      operationId: listBands
+      responses:
+        '200':
+          description: Groupes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Band'
+    post:
+      tags: [Bands]
+      operationId: createBand
+      requestBody:
+        $ref: '#/components/requestBodies/BandBody'
+      responses:
+        '201':
+          description: Groupe cree.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Band'
+  /bands/{id}:
+    put:
+      tags: [Bands]
+      operationId: updateBand
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        $ref: '#/components/requestBodies/BandBody'
+      responses:
+        '200':
+          description: Groupe mis a jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Band'
+    delete:
+      tags: [Bands]
+      operationId: deleteBand
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Groupe supprime.
+  /bands/{id}/members:
+    put:
+      tags: [Bands]
+      operationId: replaceBandMembers
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BandMembers'
+      responses:
+        '200':
+          description: Membres remplaces.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Band'
+  /individual-courses:
+    get:
+      tags: [Individual courses]
+      operationId: listIndividualCourses
+      responses:
+        '200':
+          description: Cours individuels.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IndividualCourse'
+    post:
+      tags: [Individual courses]
+      operationId: createIndividualCourse
+      requestBody:
+        $ref: '#/components/requestBodies/IndividualCourseBody'
+      responses:
+        '201':
+          description: Cours individuel cree.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndividualCourse'
+  /individual-courses/{id}:
+    put:
+      tags: [Individual courses]
+      operationId: updateIndividualCourse
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        $ref: '#/components/requestBodies/IndividualCourseBody'
+      responses:
+        '200':
+          description: Cours individuel mis a jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndividualCourse'
+    delete:
+      tags: [Individual courses]
+      operationId: deleteIndividualCourse
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Cours individuel supprime.
+  /documents/{documentId}:
+    get:
+      tags: [Documents]
+      operationId: downloadDocument
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Document genere.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Year:
+      name: year
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+    TermId:
+      name: termId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  requestBodies:
+    TeacherBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Teacher'
+    MusicianBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Musician'
+    BandBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Band'
+    IndividualCourseBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/IndividualCourse'
+  schemas:
+    AccountingYearSnapshot:
+      type: object
+      required: [settings, teachers, musicians, bands, individualCourses, attendance]
+      properties:
+        settings:
+          $ref: '#/components/schemas/Settings'
+        teachers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Teacher'
+        musicians:
+          type: array
+          items:
+            $ref: '#/components/schemas/Musician'
+        bands:
+          type: array
+          items:
+            $ref: '#/components/schemas/Band'
+        individualCourses:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndividualCourse'
+        attendance:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attendance'
+    Settings:
+      type: object
+      required: [year, teacherHourlyRate, groupMembershipFee, schoolHolidayWeeks, terms]
+      properties:
+        year:
+          type: integer
+          format: int32
+        teacherHourlyRate:
+          type: number
+        groupMembershipFee:
+          type: number
+        schoolHolidayWeeks:
+          type: array
+          items:
+            type: integer
+            format: int32
+        terms:
+          type: array
+          items:
+            $ref: '#/components/schemas/Term'
+    Term:
+      type: object
+      required: [name, startWeek, endWeek, displayOrder]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        startWeek:
+          type: integer
+          format: int32
+        endWeek:
+          type: integer
+          format: int32
+        displayOrder:
+          type: integer
+          format: int32
+    Teacher:
+      type: object
+      required: [firstName, lastName, instrument, active]
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        instrument:
+          type: string
+        active:
+          type: boolean
+    Musician:
+      type: object
+      required: [firstName, lastName, active]
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        active:
+          type: boolean
+    Band:
+      type: object
+      required: [name, type, memberIds]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/BandType'
+        teacherId:
+          type: string
+          format: uuid
+        weekday:
+          type: string
+        memberIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+    BandType:
+      type: string
+      enum: [INDEPENDENT, WORKSHOP]
+    BandMembers:
+      type: object
+      required: [memberIds]
+      properties:
+        memberIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+    IndividualCourse:
+      type: object
+      required: [musicianId, teacherId, instrument, weekday, startTime, sharedSlot, active]
+      properties:
+        id:
+          type: string
+          format: uuid
+        musicianId:
+          type: string
+          format: uuid
+        teacherId:
+          type: string
+          format: uuid
+        instrument:
+          type: string
+        weekday:
+          type: string
+        startTime:
+          type: string
+          format: time
+        sharedSlot:
+          type: boolean
+        active:
+          type: boolean
+    Attendance:
+      type: object
+      required: [termId, week, entityType, entityId, present]
+      properties:
+        id:
+          type: string
+          format: uuid
+        termId:
+          type: string
+          format: uuid
+        week:
+          type: integer
+          format: int32
+        entityType:
+          $ref: '#/components/schemas/AttendanceEntityType'
+        entityId:
+          type: string
+          format: uuid
+        present:
+          type: boolean
+    AttendanceEntityType:
+      type: string
+      enum: [INDIVIDUAL_COURSE, WORKSHOP]
+    BillingSummary:
+      type: object
+      required: [termId, studentInvoices, teacherInvoiceRequests, totals]
+      properties:
+        termId:
+          type: string
+          format: uuid
+        studentInvoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentInvoiceDraft'
+        teacherInvoiceRequests:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeacherInvoiceRequestDraft'
+        totals:
+          $ref: '#/components/schemas/BillingTotals'
+    StudentInvoiceDraft:
+      type: object
+      required: [musicianId, individualCourseCount, individualCourseAmount, groupMembershipAmount, totalAmount]
+      properties:
+        musicianId:
+          type: string
+          format: uuid
+        individualCourseCount:
+          type: integer
+          format: int32
+        individualCourseAmount:
+          type: number
+        groupMembershipAmount:
+          type: number
+        totalAmount:
+          type: number
+    TeacherInvoiceRequestDraft:
+      type: object
+      required: [teacherId, weeklyLines, totalHours, totalAmount]
+      properties:
+        teacherId:
+          type: string
+          format: uuid
+        weeklyLines:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeacherInvoiceWeeklyLine'
+        totalHours:
+          type: number
+        totalAmount:
+          type: number
+    TeacherInvoiceWeeklyLine:
+      type: object
+      required: [week, date, hours, amount]
+      properties:
+        week:
+          type: integer
+          format: int32
+        date:
+          type: string
+          format: date
+        hours:
+          type: number
+        amount:
+          type: number
+    BillingTotals:
+      type: object
+      required: [studentBilling, groupFees, teacherDue, subsidy]
+      properties:
+        studentBilling:
+          type: number
+        groupFees:
+          type: number
+        teacherDue:
+          type: number
+        subsidy:
+          type: number
+    GeneratedDocument:
+      type: object
+      required: [termId, type, status, totalAmount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        termId:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/GeneratedDocumentType'
+        status:
+          $ref: '#/components/schemas/GeneratedDocumentStatus'
+        musicianId:
+          type: string
+          format: uuid
+        teacherId:
+          type: string
+          format: uuid
+        documentNumber:
+          type: string
+        fileName:
+          type: string
+        contentType:
+          type: string
+        totalAmount:
+          type: number
+    GeneratedDocumentType:
+      type: string
+      enum: [STUDENT_INVOICE, TEACHER_INVOICE_REQUEST]
+    GeneratedDocumentStatus:
+      type: string
+      enum: [DRAFT, GENERATED, SENT, CANCELLED]
