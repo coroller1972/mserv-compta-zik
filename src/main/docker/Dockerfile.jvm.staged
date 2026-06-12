@@ -8,9 +8,10 @@
 #   docker run --rm -p 8081:8081 quarkus/mserv-compta-jvm
 ####
 
-FROM registry.access.redhat.com/ubi9/openjdk-25:1.24 AS build
+FROM eclipse-temurin:25-jdk AS build
 
 WORKDIR /workspace
+ENV GRADLE_USER_HOME=/workspace/.gradle
 
 COPY --chown=185:0 gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY --chown=185:0 gradle/ gradle/
@@ -23,7 +24,7 @@ COPY --chown=185:0 src/ src/
 
 RUN ./gradlew --no-daemon clean build -Dquarkus.package.jar.type=fast-jar
 
-FROM registry.access.redhat.com/ubi9/openjdk-25-runtime:1.24
+FROM eclipse-temurin:25-jre
 
 ENV LANGUAGE='en_US:en'
 
@@ -33,12 +34,14 @@ COPY --from=build --chown=185:0 /workspace/build/quarkus-app/app/ /deployments/a
 COPY --from=build --chown=185:0 /workspace/build/quarkus-app/quarkus/ /deployments/quarkus/
 
 USER root
-RUN mkdir -p /documents && chown -R 185:0 /documents && chmod -R g=u /documents
+RUN mkdir -p /documents \
+    && chown -R 185:0 /deployments /documents \
+    && chmod -R g=u /deployments /documents
 
 EXPOSE 8081
 
 USER 185
-ENV JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
-ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"
+ENV JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager" \
+    JAVA_APP_JAR="/deployments/quarkus-run.jar"
 
-ENTRYPOINT [ "/opt/jboss/container/java/run/run-java.sh" ]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS_APPEND $JAVA_OPTS -jar $JAVA_APP_JAR"]
