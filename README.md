@@ -53,19 +53,24 @@ If you want to build an _über-jar_, execute the following command:
 
 The application, packaged as an _über-jar_, is now runnable using `java -jar build/*-runner.jar`.
 
+## Container image
+
+The container image is built by GitHub Actions from
+`src/main/docker/Dockerfile.jvm.staged` and pushed to:
+
+```text
+ghcr.io/coroller1972/mserv-compta-zik:latest
+```
+
+This keeps the Gradle download out of the ROSA build path. ROSA only pulls the
+already built runtime image.
+
 ## Deploying on OpenShift / ROSA
 
-The OpenShift manifest defines a Docker `BuildConfig` that builds the `main`
-branch from GitHub with `src/main/docker/Dockerfile.jvm.staged` and publishes
-the image to the local `mserv-compta-zik:1.0` `ImageStreamTag`. This avoids
-deploying a bare OpenJDK runtime image without the Quarkus application under
-`/deployments`.
-
-From the target namespace:
+From the target namespace, apply the manifest:
 
 ```shell script
 oc apply -f deploy.yml
-oc start-build mserv-compta-zik --follow
 oc rollout status deployment/mserv-compta-zik
 ```
 
