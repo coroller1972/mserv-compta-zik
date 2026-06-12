@@ -53,6 +53,26 @@ If you want to build an _über-jar_, execute the following command:
 
 The application, packaged as an _über-jar_, is now runnable using `java -jar build/*-runner.jar`.
 
+## Deploying on OpenShift / ROSA
+
+The OpenShift manifest defines a Docker `BuildConfig` that builds the `main`
+branch from GitHub with `src/main/docker/Dockerfile.jvm.staged` and publishes
+the image to the local `mserv-compta-zik:1.0` `ImageStreamTag`. This avoids
+deploying a bare OpenJDK runtime image without the Quarkus application under
+`/deployments`.
+
+From the target namespace:
+
+```shell script
+oc apply -f deploy.yml
+oc start-build mserv-compta-zik --follow
+oc rollout status deployment/mserv-compta-zik
+```
+
+The build uses Java 25, matching the Gradle configuration in `build.gradle.kts`.
+Do not deploy this service with a generic Java 17 S2I/runtime image unless the
+project is first downgraded to Java 17.
+
 ## Creating a native executable
 
 You can create a native executable using:

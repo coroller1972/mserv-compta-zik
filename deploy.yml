@@ -1,9 +1,41 @@
+kind: ImageStream
+apiVersion: image.openshift.io/v1
+metadata:
+  name: mserv-compta-zik
+  labels:
+    app: compta-zik-app
+---
+kind: BuildConfig
+apiVersion: build.openshift.io/v1
+metadata:
+  name: mserv-compta-zik
+  labels:
+    app: compta-zik-app
+spec:
+  source:
+    type: Git
+    git:
+      uri: https://github.com/coroller1972/mserv-compta-zik.git
+      ref: main
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: src/main/docker/Dockerfile.jvm.staged
+  output:
+    to:
+      kind: ImageStreamTag
+      name: mserv-compta-zik:1.0
+  triggers: []
+---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: mserv-compta-zik
   labels:
     app: compta-zik-app
+  annotations:
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"mserv-compta-zik:1.0"},"fieldPath":"spec.template.spec.containers[?(@.name==\"mserv-compta-zik\")].image"}]
 spec:
   replicas: 1
   selector:
