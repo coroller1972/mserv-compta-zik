@@ -8,6 +8,14 @@ import java.util.UUID
 
 @ApplicationScoped
 class AttendanceRepository : PanacheRepositoryBase<AttendanceEntity, UUID> {
+    fun listWithTerms() = find(
+        """
+        select attendance
+        from AttendanceEntity attendance
+        join fetch attendance.term
+        """.trimIndent(),
+    ).list()
+
     fun listByAccountingYear(year: Int) = find(
         """
         select attendance

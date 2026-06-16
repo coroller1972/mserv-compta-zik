@@ -12,8 +12,38 @@ tags:
   - name: Musicians
   - name: Bands
   - name: Individual courses
+  - name: Expenses
   - name: Documents
+  - name: Data transfer
 paths:
+  /data/export:
+    get:
+      tags: [Data transfer]
+      operationId: exportData
+      responses:
+        '200':
+          description: Export complet des donnees metier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataTransfer'
+  /data/import:
+    post:
+      tags: [Data transfer]
+      operationId: importData
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataTransfer'
+      responses:
+        '200':
+          description: Import termine.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataImportResult'
   /accounting-years/{year}/snapshot:
     get:
       tags: [Accounting years]
@@ -122,6 +152,35 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/GeneratedDocument'
+  /accounting-years/{year}/expenses:
+    get:
+      tags: [Expenses]
+      operationId: listYearExpenses
+      parameters:
+        - $ref: '#/components/parameters/Year'
+      responses:
+        '200':
+          description: Depenses de l'annee.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Expense'
+    post:
+      tags: [Expenses]
+      operationId: createExpense
+      parameters:
+        - $ref: '#/components/parameters/Year'
+      requestBody:
+        $ref: '#/components/requestBodies/ExpenseBody'
+      responses:
+        '201':
+          description: Depense creee.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
   /attendance:
     put:
       tags: [Attendance]
@@ -350,6 +409,29 @@ paths:
       responses:
         '204':
           description: Cours individuel supprime.
+  /expenses/{id}:
+    put:
+      tags: [Expenses]
+      operationId: updateExpense
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        $ref: '#/components/requestBodies/ExpenseBody'
+      responses:
+        '200':
+          description: Depense mise a jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+    delete:
+      tags: [Expenses]
+      operationId: deleteExpense
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Depense supprimee.
   /documents/{documentId}:
     get:
       tags: [Documents]
@@ -417,10 +499,16 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/IndividualCourse'
+    ExpenseBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Expense'
   schemas:
     AccountingYearSnapshot:
       type: object
-      required: [settings, teachers, musicians, bands, individualCourses, attendance]
+      required: [settings, teachers, musicians, bands, individualCourses, attendance, expenses]
       properties:
         settings:
           $ref: '#/components/schemas/Settings'
@@ -444,6 +532,76 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Attendance'
+        expenses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Expense'
+    DataTransfer:
+      type: object
+      required: [formatVersion, exportedAt, settings, teachers, musicians, bands, individualCourses, attendance, expenses]
+      properties:
+        formatVersion:
+          type: integer
+          format: int32
+        exportedAt:
+          type: string
+          format: date-time
+        settings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Settings'
+        teachers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Teacher'
+        musicians:
+          type: array
+          items:
+            $ref: '#/components/schemas/Musician'
+        bands:
+          type: array
+          items:
+            $ref: '#/components/schemas/Band'
+        individualCourses:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndividualCourse'
+        attendance:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attendance'
+        expenses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Expense'
+    DataImportResult:
+      type: object
+      required: [importedAt, settings, teachers, musicians, bands, individualCourses, attendance, expenses]
+      properties:
+        importedAt:
+          type: string
+          format: date-time
+        settings:
+          type: integer
+          format: int32
+        teachers:
+          type: integer
+          format: int32
+        musicians:
+          type: integer
+          format: int32
+        bands:
+          type: integer
+          format: int32
+        individualCourses:
+          type: integer
+          format: int32
+        attendance:
+          type: integer
+          format: int32
+        expenses:
+          type: integer
+          format: int32
     Settings:
       type: object
       required: [year, teacherHourlyRate, groupMembershipFee, schoolHolidayWeeks, terms]
@@ -593,6 +751,30 @@ components:
     AttendanceEntityType:
       type: string
       enum: [INDIVIDUAL_COURSE, WORKSHOP]
+    Expense:
+      type: object
+      required: [year, date, category, label, amount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        year:
+          type: integer
+          format: int32
+        date:
+          type: string
+          format: date
+        category:
+          $ref: '#/components/schemas/ExpenseCategory'
+        label:
+          type: string
+        amount:
+          type: number
+        notes:
+          type: string
+    ExpenseCategory:
+      type: string
+      enum: [EQUIPMENT, INSTRUMENT_REPAIR, MAINTENANCE, ROOM_RENTAL, CONCERT, OTHER]
     BillingSummary:
       type: object
       required: [termId, studentInvoices, teacherInvoiceRequests, totals]

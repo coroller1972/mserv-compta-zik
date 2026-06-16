@@ -3,6 +3,7 @@ package fr.spiritbox.compta
 import fr.spiritbox.compta.domain.AccountingYearSettingsEntity
 import fr.spiritbox.compta.domain.AttendanceEntity
 import fr.spiritbox.compta.domain.BandEntity
+import fr.spiritbox.compta.domain.ExpenseEntity
 import fr.spiritbox.compta.domain.GeneratedDocumentEntity
 import fr.spiritbox.compta.domain.IndividualCourseEntity
 import fr.spiritbox.compta.domain.MusicianEntity
@@ -13,6 +14,8 @@ import fr.spiritbox.compta.openapi.model.Attendance
 import fr.spiritbox.compta.openapi.model.AttendanceEntityType
 import fr.spiritbox.compta.openapi.model.Band
 import fr.spiritbox.compta.openapi.model.BandType
+import fr.spiritbox.compta.openapi.model.Expense
+import fr.spiritbox.compta.openapi.model.ExpenseCategory
 import fr.spiritbox.compta.openapi.model.GeneratedDocument
 import fr.spiritbox.compta.openapi.model.GeneratedDocumentStatus
 import fr.spiritbox.compta.openapi.model.GeneratedDocumentType
@@ -32,6 +35,7 @@ class Mapper {
         bands: List<BandEntity>,
         individualCourses: List<IndividualCourseEntity>,
         attendance: List<AttendanceEntity>,
+        expenses: List<ExpenseEntity>,
     ) = AccountingYearSnapshot(
         settings = settings.toDto(),
         teachers = teachers.map { it.toDto() },
@@ -39,6 +43,7 @@ class Mapper {
         bands = bands.map { it.toDto() },
         individualCourses = individualCourses.map { it.toDto() },
         attendance = attendance.map { it.toDto() },
+        expenses = expenses.map { it.toDto() },
     )
 
     fun TeacherEntity.toDto() = Teacher(
@@ -115,6 +120,16 @@ class Mapper {
         fileName = fileName,
         contentType = contentType,
         totalAmount = totalAmount,
+    )
+
+    fun ExpenseEntity.toDto() = Expense(
+        id = id,
+        year = year,
+        date = date,
+        category = ExpenseCategory.valueOf(category.name),
+        label = label,
+        amount = amount,
+        notes = notes,
     )
      
 

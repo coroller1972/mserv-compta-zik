@@ -21,3 +21,12 @@ enum class GeneratedDocumentStatus {
     SENT,
     CANCELLED,
 }
+
+enum class ExpenseCategory {
+    EQUIPMENT,
+    INSTRUMENT_REPAIR,
+    MAINTENANCE,
+    ROOM_RENTAL,
+    CONCERT,
+    OTHER,
+}

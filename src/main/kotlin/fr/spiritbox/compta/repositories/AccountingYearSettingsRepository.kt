@@ -7,6 +7,14 @@ import java.util.UUID
 
 @ApplicationScoped
 class AccountingYearSettingsRepository : PanacheRepositoryBase<AccountingYearSettingsEntity, UUID> {
+    fun listWithTerms() = find(
+        """
+        select distinct settings
+        from AccountingYearSettingsEntity settings
+        left join fetch settings.terms
+        """.trimIndent(),
+    ).list()
+
     fun findByYearWithTerms(year: Int) = find(
         """
         select distinct settings

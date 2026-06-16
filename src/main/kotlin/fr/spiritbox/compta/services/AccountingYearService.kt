@@ -21,6 +21,7 @@ import fr.spiritbox.compta.openapi.model.TeacherInvoiceWeeklyLine
 import fr.spiritbox.compta.repositories.AccountingYearSettingsRepository
 import fr.spiritbox.compta.repositories.AttendanceRepository
 import fr.spiritbox.compta.repositories.BandRepository
+import fr.spiritbox.compta.repositories.ExpenseRepository
 import fr.spiritbox.compta.repositories.GeneratedDocumentRepository
 import fr.spiritbox.compta.repositories.IndividualCourseRepository
 import fr.spiritbox.compta.repositories.MusicianRepository
@@ -48,6 +49,7 @@ class AccountingYearService(
     private val bandRepository: BandRepository,
     private val individualCourseRepository: IndividualCourseRepository,
     private val attendanceRepository: AttendanceRepository,
+    private val expenseRepository: ExpenseRepository,
     private val generatedDocumentRepository: GeneratedDocumentRepository,
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper,
@@ -73,6 +75,7 @@ class AccountingYearService(
         val bands = bandRepository.listWithMembers().awaitSuspending()
         val individualCourse = individualCourseRepository.listWithRelations().awaitSuspending()
         val attendance = attendanceRepository.listByAccountingYear(year).awaitSuspending()
+        val expenses = expenseRepository.listByYear(year).awaitSuspending()
 
         return mapper.toSnapshotDto(
             settings,
@@ -80,7 +83,8 @@ class AccountingYearService(
             musicians,
             bands,
             individualCourse,
-            attendance
+            attendance,
+            expenses,
         )
     }
 
