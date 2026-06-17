@@ -109,6 +109,16 @@ class Mapper {
         present = present,
     )
 
+    fun ExpenseEntity.toDto() = Expense(
+        id = id,
+        year = year,
+        date = date,
+        category = ExpenseCategory.valueOf(category.name),
+        label = label,
+        amount = amount,
+        notes = notes,
+    )
+
     fun GeneratedDocumentEntity.toDto() = GeneratedDocument(
         id = id,
         termId = requireNotNull(term.id) { "Cannot map GeneratedDocumentEntity without persisted term id." },
@@ -120,16 +130,6 @@ class Mapper {
         fileName = fileName,
         contentType = contentType,
         totalAmount = totalAmount,
-    )
-
-    fun ExpenseEntity.toDto() = Expense(
-        id = id,
-        year = year,
-        date = date,
-        category = ExpenseCategory.valueOf(category.name),
-        label = label,
-        amount = amount,
-        notes = notes,
     )
      
 

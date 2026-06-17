@@ -7,12 +7,4 @@ import java.util.UUID
 
 @ApplicationScoped
 class ExpenseRepository : PanacheRepositoryBase<ExpenseEntity, UUID> {
-    fun listByYear(year: Int) = find(
-        """
-        from ExpenseEntity expense
-        where expense.year = ?1
-        order by expense.date desc, expense.label asc
-        """.trimIndent(),
-        year,
-    ).list()
 }

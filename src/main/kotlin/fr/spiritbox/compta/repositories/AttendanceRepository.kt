@@ -12,7 +12,9 @@ class AttendanceRepository : PanacheRepositoryBase<AttendanceEntity, UUID> {
         """
         select attendance
         from AttendanceEntity attendance
-        join fetch attendance.term
+        join fetch attendance.term term
+        join fetch term.settings
+        order by term.startWeek, attendance.week
         """.trimIndent(),
     ).list()
 

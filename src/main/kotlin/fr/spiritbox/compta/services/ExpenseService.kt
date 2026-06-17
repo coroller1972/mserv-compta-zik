@@ -11,6 +11,7 @@ import jakarta.enterprise.context.ApplicationScoped
 import jakarta.ws.rs.BadRequestException
 import jakarta.ws.rs.NotFoundException
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.util.UUID
 
 @ApplicationScoped
@@ -19,8 +20,9 @@ class ExpenseService(
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper,
 ) {
-    suspend fun listYearExpenses(year: Int): List<Expense> = panacheCoroutine.withSession {
-        expenseRepository.listByYear(year)
+    suspend fun listExpenses(year: Int): List<Expense> = panacheCoroutine.withSession {
+        expenseRepository.find("year = ?1 order by date desc, label", year)
+            .list()
             .awaitSuspending()
             .map { mapper.run { it.toDto() } }
     }
@@ -29,8 +31,12 @@ class ExpenseService(
         if (expense.id != null) {
             throw BadRequestException("Expense id must not be provided when creating an expense.")
         }
+        if (expense.year != year) {
+            throw BadRequestException("Path year $year does not match payload year ${expense.year}.")
+        }
+
         val entity = ExpenseEntity()
-        applyPayload(entity, expense.copy(year = year))
+        applyPayload(entity, expense)
         expenseRepository.persist(entity).awaitSuspending()
 
         mapper.run { entity.toDto() }
@@ -40,6 +46,7 @@ class ExpenseService(
         if (expense.id != null && expense.id != id) {
             throw BadRequestException("Path expense id $id does not match payload id ${expense.id}.")
         }
+
         val entity = getExpense(id)
         applyPayload(entity, expense)
 
@@ -54,15 +61,23 @@ class ExpenseService(
     }
 
     private fun applyPayload(entity: ExpenseEntity, expense: Expense) {
-        if (expense.amount < BigDecimal.ZERO) {
-            throw BadRequestException("Expense amount must be positive or zero.")
+        val label = expense.label.trim()
+        if (label.isBlank()) {
+            throw BadRequestException("Expense label is required.")
         }
+        if (expense.year !in 2000..2100) {
+            throw BadRequestException("Expense year must be between 2000 and 2100.")
+        }
+        if (expense.amount < BigDecimal.ZERO) {
+            throw BadRequestException("Expense amount must be greater than or equal to zero.")
+        }
+
         entity.year = expense.year
         entity.date = expense.date
         entity.category = ExpenseCategory.valueOf(expense.category.name)
-        entity.label = expense.label.trim()
-        entity.amount = expense.amount
-        entity.notes = expense.notes?.trim()?.takeIf { it.isNotEmpty() }
+        entity.label = label
+        entity.amount = expense.amount.setScale(2, RoundingMode.HALF_UP)
+        entity.notes = expense.notes?.trim()?.takeIf { it.isNotBlank() }
     }
 
     private suspend fun getExpense(id: UUID): ExpenseEntity =

@@ -75,7 +75,7 @@ class AccountingYearService(
         val bands = bandRepository.listWithMembers().awaitSuspending()
         val individualCourse = individualCourseRepository.listWithRelations().awaitSuspending()
         val attendance = attendanceRepository.listByAccountingYear(year).awaitSuspending()
-        val expenses = expenseRepository.listByYear(year).awaitSuspending()
+        val expenses = expenseRepository.find("year = ?1 order by date desc, label", year).list().awaitSuspending()
 
         return mapper.toSnapshotDto(
             settings,
@@ -84,7 +84,7 @@ class AccountingYearService(
             bands,
             individualCourse,
             attendance,
-            expenses,
+            expenses
         )
     }
 

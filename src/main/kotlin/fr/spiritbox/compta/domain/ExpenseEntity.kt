@@ -10,20 +10,16 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Index
 import jakarta.persistence.Table
-import org.hibernate.annotations.CreationTimestamp
-import org.hibernate.annotations.UpdateTimestamp
 import java.math.BigDecimal
-import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
 @Entity
 @Table(
-    name = "expense",
+    name = "music_expense",
     indexes = [
-        Index(name = "idx_expense_year", columnList = "year"),
-        Index(name = "idx_expense_date", columnList = "expense_date"),
-        Index(name = "idx_expense_category", columnList = "category"),
+        Index(name = "idx_music_expense_year", columnList = "year"),
+        Index(name = "idx_music_expense_date", columnList = "expense_date"),
     ],
 )
 open class ExpenseEntity : PanacheEntityBase {
@@ -35,11 +31,11 @@ open class ExpenseEntity : PanacheEntityBase {
     open var year: Int = 0
 
     @Column(name = "expense_date", nullable = false)
-    open var date: LocalDate = LocalDate.now()
+    open lateinit var date: LocalDate
 
     @Enumerated(EnumType.STRING)
     @Column(name = "category", nullable = false, length = 60)
-    open var category: ExpenseCategory = ExpenseCategory.EQUIPMENT
+    open var category: ExpenseCategory = ExpenseCategory.OTHER
 
     @Column(name = "label", nullable = false, length = 180)
     open var label: String = ""
@@ -47,14 +43,6 @@ open class ExpenseEntity : PanacheEntityBase {
     @Column(name = "amount", nullable = false, precision = 12, scale = 2)
     open var amount: BigDecimal = BigDecimal.ZERO
 
-    @Column(name = "notes", length = 500)
+    @Column(name = "notes", length = 1000)
     open var notes: String? = null
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    open var createdAt: Instant? = null
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    open var updatedAt: Instant? = null
 }

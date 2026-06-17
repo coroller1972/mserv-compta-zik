@@ -15,7 +15,19 @@ tags:
   - name: Expenses
   - name: Documents
   - name: Data transfer
+  - name: Auth
 paths:
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Informations de l'utilisateur connecte transmises par le proxy d'authentification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
   /data/export:
     get:
       tags: [Data transfer]
@@ -154,13 +166,13 @@ paths:
                   $ref: '#/components/schemas/GeneratedDocument'
   /accounting-years/{year}/expenses:
     get:
-      tags: [Expenses]
-      operationId: listYearExpenses
+      tags: [Accounting years]
+      operationId: listExpenses
       parameters:
         - $ref: '#/components/parameters/Year'
       responses:
         '200':
-          description: Depenses de l'annee.
+          description: Depenses de l'annee comptable.
           content:
             application/json:
               schema:
@@ -168,7 +180,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/Expense'
     post:
-      tags: [Expenses]
+      tags: [Accounting years]
       operationId: createExpense
       parameters:
         - $ref: '#/components/parameters/Year'
@@ -506,6 +518,22 @@ components:
           schema:
             $ref: '#/components/schemas/Expense'
   schemas:
+    CurrentUser:
+      type: object
+      required: [authenticated]
+      properties:
+        authenticated:
+          type: boolean
+        username:
+          type: string
+        displayName:
+          type: string
+        email:
+          type: string
+        groups:
+          type: array
+          items:
+            type: string
     AccountingYearSnapshot:
       type: object
       required: [settings, teachers, musicians, bands, individualCourses, attendance, expenses]

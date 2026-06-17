@@ -12,6 +12,7 @@ class AccountingYearSettingsRepository : PanacheRepositoryBase<AccountingYearSet
         select distinct settings
         from AccountingYearSettingsEntity settings
         left join fetch settings.terms
+        order by settings.year
         """.trimIndent(),
     ).list()
 
