@@ -81,9 +81,9 @@ class DataTransferService(
         val termsById = importSettings(dataTransfer.settings)
         val teachersById = importTeachers(dataTransfer.teachers)
         val musiciansById = importMusicians(dataTransfer.musicians)
-        importBands(dataTransfer.bands, teachersById, musiciansById)
-        importIndividualCourses(dataTransfer.individualCourses, teachersById, musiciansById)
-        importAttendance(dataTransfer.attendance, termsById)
+        val bandsById = importBands(dataTransfer.bands, teachersById, musiciansById)
+        val individualCoursesById = importIndividualCourses(dataTransfer.individualCourses, teachersById, musiciansById)
+        importAttendance(dataTransfer.attendance, termsById, individualCoursesById, bandsById)
         importExpenses(dataTransfer.expenses)
 
         DataImportResult(
@@ -123,14 +123,12 @@ class DataTransferService(
             accountingYearSettingsRepository.persist(entity).awaitSuspending()
             dto.terms.forEach { termDto ->
                 val term = TermEntity().apply {
-                    id = termDto.id
                     this.settings = entity
                     name = termDto.name
                     startWeek = termDto.startWeek
                     endWeek = termDto.endWeek
                     displayOrder = termDto.displayOrder
                 }
-                entity.terms.add(term)
                 termRepository.persist(term).awaitSuspending()
                 termDto.id?.let { termsById[it] = term }
             }
@@ -141,7 +139,6 @@ class DataTransferService(
     private suspend fun importTeachers(teachers: List<fr.spiritbox.compta.openapi.model.Teacher>): Map<UUID, TeacherEntity> {
         val entities = teachers.map { dto ->
             val entity = TeacherEntity().apply {
-                id = dto.id
                 firstName = dto.firstName
                 lastName = dto.lastName
                 instrument = dto.instrument
@@ -158,7 +155,6 @@ class DataTransferService(
     private suspend fun importMusicians(musicians: List<fr.spiritbox.compta.openapi.model.Musician>): Map<UUID, MusicianEntity> {
         val entities = musicians.map { dto ->
             val entity = MusicianEntity().apply {
-                id = dto.id
                 firstName = dto.firstName
                 lastName = dto.lastName
                 email = dto.email
@@ -176,16 +172,17 @@ class DataTransferService(
         bands: List<fr.spiritbox.compta.openapi.model.Band>,
         teachersById: Map<UUID, TeacherEntity>,
         musiciansById: Map<UUID, MusicianEntity>,
-    ) {
+    ): Map<UUID, BandEntity> {
+        val bandsById = mutableMapOf<UUID, BandEntity>()
         bands.forEach { dto ->
             val band = BandEntity().apply {
-                id = dto.id
                 name = dto.name
                 type = BandType.valueOf(dto.type.name)
                 teacher = dto.teacherId?.let { teachersById.required(it, "Teacher") }
                 weekday = dto.weekday
             }
             bandRepository.persist(band).awaitSuspending()
+            requireNotNull(dto.id) { "Band id is required in import." }.let { bandsById[it] = band }
             dto.memberIds.distinct().forEach { musicianId ->
                 bandMemberRepository.persist(BandMemberEntity().apply {
                     this.band = band
@@ -193,16 +190,16 @@ class DataTransferService(
                 }).awaitSuspending()
             }
         }
+        return bandsById
     }
 
     private suspend fun importIndividualCourses(
         individualCourses: List<fr.spiritbox.compta.openapi.model.IndividualCourse>,
         teachersById: Map<UUID, TeacherEntity>,
         musiciansById: Map<UUID, MusicianEntity>,
-    ) {
+    ): Map<UUID, IndividualCourseEntity> {
         val entities = individualCourses.map { dto ->
-            IndividualCourseEntity().apply {
-                id = dto.id
+            requireNotNull(dto.id) { "Individual course id is required in import." } to IndividualCourseEntity().apply {
                 musician = musiciansById.required(dto.musicianId, "Musician")
                 teacher = teachersById.required(dto.teacherId, "Teacher")
                 instrument = dto.instrument
@@ -213,21 +210,28 @@ class DataTransferService(
             }
         }
         if (entities.isNotEmpty()) {
-            individualCourseRepository.persist(entities).awaitSuspending()
+            individualCourseRepository.persist(entities.map { it.second }).awaitSuspending()
         }
+        return entities.toMap()
     }
 
     private suspend fun importAttendance(
         attendance: List<fr.spiritbox.compta.openapi.model.Attendance>,
         termsById: Map<UUID, TermEntity>,
+        individualCoursesById: Map<UUID, IndividualCourseEntity>,
+        bandsById: Map<UUID, BandEntity>,
     ) {
         val entities = attendance.map { dto ->
             AttendanceEntity().apply {
-                id = dto.id
                 term = termsById.required(dto.termId, "Term")
                 week = dto.week
                 entityType = AttendanceEntityType.valueOf(dto.entityType.name)
-                entityId = dto.entityId
+                entityId = when (entityType) {
+                    AttendanceEntityType.INDIVIDUAL_COURSE ->
+                        requireNotNull(individualCoursesById.required(dto.entityId, "Individual course").id)
+                    AttendanceEntityType.WORKSHOP ->
+                        requireNotNull(bandsById.required(dto.entityId, "Band").id)
+                }
                 present = dto.present
             }
         }
@@ -239,7 +243,6 @@ class DataTransferService(
     private suspend fun importExpenses(expenses: List<fr.spiritbox.compta.openapi.model.Expense>) {
         val entities = expenses.map { dto ->
             ExpenseEntity().apply {
-                id = dto.id
                 year = dto.year
                 date = dto.date
                 category = ExpenseCategory.valueOf(dto.category.name)
