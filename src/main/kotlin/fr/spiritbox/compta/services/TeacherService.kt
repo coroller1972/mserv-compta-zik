@@ -3,6 +3,8 @@ package fr.spiritbox.compta.services
 import fr.spiritbox.compta.Mapper
 import fr.spiritbox.compta.domain.TeacherEntity
 import fr.spiritbox.compta.openapi.model.Teacher
+import fr.spiritbox.compta.repositories.BandRepository
+import fr.spiritbox.compta.repositories.IndividualCourseRepository
 import fr.spiritbox.compta.repositories.TeacherRepository
 import fr.spiritbox.compta.utils.PanacheCoroutine
 import io.smallrye.mutiny.coroutines.awaitSuspending
@@ -14,6 +16,8 @@ import java.util.UUID
 @ApplicationScoped
 class TeacherService(
     private val teacherRepository: TeacherRepository,
+    private val individualCourseRepository: IndividualCourseRepository,
+    private val bandRepository: BandRepository,
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper,
 ) {
@@ -30,9 +34,15 @@ class TeacherService(
     }
 
     suspend fun deleteTeacher(id: UUID): Unit = panacheCoroutine.withTransaction {
-        val deleted = teacherRepository.delete("id", id).awaitSuspending()
-        if (deleted == 0L) {
-            throw NotFoundException("Teacher $id was not found.")
+        val entity = getTeacher(id)
+        val usageCount =
+            individualCourseRepository.count("teacher.id", id).awaitSuspending() +
+                bandRepository.count("teacher.id", id).awaitSuspending()
+
+        if (usageCount > 0) {
+            entity.active = false
+        } else {
+            teacherRepository.delete(entity).awaitSuspending()
         }
     }
 

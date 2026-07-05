@@ -1,0 +1,98 @@
+kind: ImageStream
+apiVersion: image.openshift.io/v1
+metadata:
+  name: compta-zik-frontend
+  labels:
+    app: compta-zik-frontend
+spec:
+  lookupPolicy:
+    local: true
+---
+kind: BuildConfig
+apiVersion: build.openshift.io/v1
+metadata:
+  name: compta-zik-frontend
+  labels:
+    app: compta-zik-frontend
+spec:
+  source:
+    type: Git
+    git:
+      uri: https://github.com/coroller1972/compta-zik-frontend.git
+    contextDir: /
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: compta-zik-frontend:latest
+  triggers:
+    - type: ConfigChange
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: compta-zik-frontend
+  labels:
+    app: compta-zik-frontend
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"compta-zik-frontend:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"compta-zik-frontend\")].image"}]'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: compta-zik-frontend
+  template:
+    metadata:
+      labels:
+        app: compta-zik-frontend
+    spec:
+      containers:
+        - name: compta-zik-frontend
+          image: compta-zik-frontend:latest
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              memory: "100Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: compta-zik-frontend-svc
+  labels:
+    app: compta-zik-frontend
+spec:
+  ports:
+    - name: http-80
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: compta-zik-frontend
+---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: compta-zik-frontend
+  labels:
+    app: compta-zik-frontend
+spec:
+  host: compta-zik-frontend-ui-core.apps.dev-app-hub.0k6e.p1.openshiftapps.com
+  to:
+    kind: Service
+    name: compta-zik-frontend-svc
+  path: /
+  port:
+    targetPort: http-80
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

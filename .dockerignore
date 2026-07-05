@@ -2,7 +2,9 @@
 .gradle
 .idea
 .kotlin
-build
+build/*
+!build/quarkus-app/
+!build/quarkus-app/**
 documents
 *.iml
 .DS_Store

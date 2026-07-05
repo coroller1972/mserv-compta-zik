@@ -5,6 +5,8 @@ info:
   description: API de gestion comptable de l'activite musique.
 servers:
   - url: /api
+security:
+  - bearerAuth: []
 tags:
   - name: Accounting years
   - name: Attendance
@@ -15,19 +17,7 @@ tags:
   - name: Expenses
   - name: Documents
   - name: Data transfer
-  - name: Auth
 paths:
-  /auth/me:
-    get:
-      tags: [Auth]
-      operationId: getCurrentUser
-      responses:
-        '200':
-          description: Informations de l'utilisateur connecte transmises par le proxy d'authentification.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CurrentUser'
   /data/export:
     get:
       tags: [Data transfer]
@@ -464,6 +454,11 @@ paths:
                 type: string
                 format: binary
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
     Id:
       name: id
@@ -518,22 +513,6 @@ components:
           schema:
             $ref: '#/components/schemas/Expense'
   schemas:
-    CurrentUser:
-      type: object
-      required: [authenticated]
-      properties:
-        authenticated:
-          type: boolean
-        username:
-          type: string
-        displayName:
-          type: string
-        email:
-          type: string
-        groups:
-          type: array
-          items:
-            type: string
     AccountingYearSnapshot:
       type: object
       required: [settings, teachers, musicians, bands, individualCourses, attendance, expenses]

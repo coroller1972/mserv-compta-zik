@@ -6,6 +6,8 @@ metadata:
     app: compta-zik-app
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: compta-zik-app
@@ -42,6 +44,24 @@ spec:
                 secretKeyRef:
                   name: mserv-compta-zik-db
                   key: password
+            - name: QUARKUS_HTTP_CORS_ENABLED
+              value: "true"
+            - name: QUARKUS_HTTP_CORS_ORIGINS
+              value: "https://compta-zik-frontend-ui-core.apps.dev-app-hub.0k6e.p1.openshiftapps.com"
+            - name: QUARKUS_HTTP_CORS_METHODS
+              value: "GET,POST,PUT,DELETE,OPTIONS"
+            - name: QUARKUS_HTTP_CORS_HEADERS
+              value: "Content-Type,Authorization"
+            - name: AUTH_JWT_ISSUER
+              valueFrom:
+                secretKeyRef:
+                  name: mserv-auth-jwt
+                  key: issuer
+            - name: AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mserv-auth-jwt
+                  key: secret
           volumeMounts:
             - name: documents
               mountPath: /documents
@@ -89,6 +109,24 @@ spec:
   selector:
     app: compta-zik-app
 ---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: mserv-compta-zik-api
+  labels:
+    app: compta-zik-app
+spec:
+  host: compta-zik-frontend-ui-core.apps.dev-app-hub.0k6e.p1.openshiftapps.com
+  path: /api
+  to:
+    kind: Service
+    name: mserv-compta-zik-svc
+  port:
+    targetPort: http-8081
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
@@ -101,19 +139,3 @@ spec:
   resources:
     requests:
       storage: 1Gi
----
-kind: Route
-apiVersion: route.openshift.io/v1
-metadata:
-  name: mserv-compta-zik
-  labels:
-    app: compta-zik-app
-spec:
-  to:
-    kind: Service
-    name: mserv-compta-zik-svc
-  port:
-    targetPort: http-8081
-  tls:
-    termination: edge
-    insecureEdgeTerminationPolicy: Redirect

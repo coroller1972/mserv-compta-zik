@@ -1,0 +1,215 @@
+kind: Secret
+apiVersion: v1
+metadata:
+  name: authelia-secrets
+  labels:
+    app: authelia
+type: Opaque
+stringData:
+  # Replace these values before applying the manifest.
+  # Each value should be a long random string.
+  session-secret: "REPLACE_WITH_A_LONG_RANDOM_SESSION_SECRET"
+  storage-encryption-key: "REPLACE_WITH_A_LONG_RANDOM_STORAGE_ENCRYPTION_KEY"
+  jwt-secret: "REPLACE_WITH_A_LONG_RANDOM_JWT_SECRET"
+---
+kind: Secret
+apiVersion: v1
+metadata:
+  name: authelia-users
+  labels:
+    app: authelia
+type: Opaque
+stringData:
+  users_database.yml: |
+    users:
+      admin:
+        disabled: false
+        displayname: "Admin"
+        # Generate with:
+        # docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --password 'your-password'
+        password: "REPLACE_WITH_ARGON2_PASSWORD_HASH"
+        email: admin@compta-zik.com
+        groups:
+          - admins
+      fabrice:
+        disabled: false
+        displayname: "Fabrice Coroller"
+        # Generate with:
+        # docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --password 'your-password'
+        password: "REPLACE_WITH_ARGON2_PASSWORD_HASH"
+        email: fabrice.coroller@safrangroup.com
+        groups:
+          - admins
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: authelia-config
+  labels:
+    app: authelia
+data:
+  configuration.yml: |
+    server:
+      address: tcp://:9091/
+
+    log:
+      level: info
+
+    theme: auto
+
+    identity_validation:
+      reset_password:
+        jwt_secret: '{{ secret "/secrets/jwt-secret" }}'
+
+    authentication_backend:
+      file:
+        path: /config/users_database.yml
+
+    access_control:
+      default_policy: deny
+      rules:
+        - domain: authelia-ui-core.apps.dev-app-hub.0k6e.p1.openshiftapps.com
+          policy: bypass
+        - domain: compta-zik-frontend-ui-core.apps.dev-app-hub.0k6e.p1.openshiftapps.com
+          policy: one_factor
+
+    session:
+      secret: '{{ secret "/secrets/session-secret" }}'
+      cookies:
+        - name: authelia_session
+          domain: apps.dev-app-hub.0k6e.p1.openshiftapps.com
+          authelia_url: https://authelia-ui-core.apps.dev-app-hub.0k6e.p1.openshiftapps.com
+          default_redirection_url: https://compta-zik-frontend-ui-core.apps.dev-app-hub.0k6e.p1.openshiftapps.com
+
+    storage:
+      encryption_key: '{{ secret "/secrets/storage-encryption-key" }}'
+      local:
+        path: /data/db.sqlite3
+
+    notifier:
+      filesystem:
+        filename: /data/notification.txt
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: authelia-data
+  labels:
+    app: authelia
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: authelia
+  labels:
+    app: authelia
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: authelia
+  template:
+    metadata:
+      labels:
+        app: authelia
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: authelia
+          # Authelia does not appear to have an official Red Hat certified image.
+          # Replace this with your mirrored/internal Authelia image if your cluster
+          # only allows approved registries.
+          image: docker.io/authelia/authelia:4.38
+          command:
+            - authelia
+          args:
+            - --config=/config/configuration.yml
+          ports:
+            - name: http
+              containerPort: 9091
+              protocol: TCP
+          volumeMounts:
+            - name: authelia-config
+              mountPath: /config/configuration.yml
+              subPath: configuration.yml
+              readOnly: true
+            - name: authelia-users
+              mountPath: /config/users_database.yml
+              subPath: users_database.yml
+              readOnly: true
+            - name: authelia-secrets
+              mountPath: /secrets
+              readOnly: true
+            - name: authelia-data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 9091
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 9091
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: authelia-config
+          configMap:
+            name: authelia-config
+        - name: authelia-users
+          secret:
+            secretName: authelia-users
+        - name: authelia-secrets
+          secret:
+            secretName: authelia-secrets
+        - name: authelia-data
+          persistentVolumeClaim:
+            claimName: authelia-data
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: authelia-svc
+  labels:
+    app: authelia
+spec:
+  ports:
+    - name: http
+      port: 9091
+      protocol: TCP
+      targetPort: 9091
+  selector:
+    app: authelia
+---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: authelia
+  labels:
+    app: authelia
+spec:
+  to:
+    kind: Service
+    name: authelia-svc
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
