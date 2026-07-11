@@ -22,7 +22,9 @@ RUN chmod +x ./gradlew && chown -R 185:0 /workspace && chmod -R g=u /workspace
 USER 185
 COPY --chown=185:0 src/ src/
 
-RUN ./gradlew --no-daemon clean build -Dquarkus.package.jar.type=fast-jar
+# Tests run on the CI runner before the image build so Quarkus Dev Services can
+# reach its Docker daemon. BuildKit deliberately has no nested Docker access.
+RUN ./gradlew --no-daemon clean quarkusBuild -x test -Dquarkus.package.jar.type=fast-jar
 
 FROM eclipse-temurin:25-jre
 
