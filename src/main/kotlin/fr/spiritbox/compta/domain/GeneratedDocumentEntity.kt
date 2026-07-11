@@ -14,6 +14,7 @@ import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import org.hibernate.annotations.CreationTimestamp
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.annotations.UpdateTimestamp
@@ -37,6 +38,10 @@ open class GeneratedDocumentEntity : PanacheEntityBase {
     @GeneratedValue(strategy = GenerationType.UUID)
     open var id: UUID? = null
 
+    @Version
+    @Column(name = "version", nullable = false)
+    open var version: Long = 0
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "term_id", nullable = false)
     open lateinit var term: TermEntity
@@ -56,6 +61,22 @@ open class GeneratedDocumentEntity : PanacheEntityBase {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "teacher_id")
     open var teacher: TeacherEntity? = null
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_document_id")
+    open var parentDocument: GeneratedDocumentEntity? = null
+
+    @Column(name = "correction_reason", length = 1000)
+    open var correctionReason: String? = null
+
+    @Column(name = "sent_at")
+    open var sentAt: Instant? = null
+
+    @Column(name = "cancelled_at")
+    open var cancelledAt: Instant? = null
+
+    @Column(name = "credited_at")
+    open var creditedAt: Instant? = null
 
     @Column(name = "document_number", length = 80)
     open var documentNumber: String? = null

@@ -18,7 +18,7 @@ class BandResource(
     override suspend fun deleteBand(id: UUID): Response =
         bandService.deleteBand(id).let { Response.noContent().build() }
 
-    override suspend fun listBands(): Response = Response.ok(bandService.bands()).build()
+    override suspend fun listBands(year: Int): Response = Response.ok(bandService.bands(year)).build()
 
     override suspend fun replaceBandMembers(
         id: UUID,

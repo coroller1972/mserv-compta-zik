@@ -16,12 +16,24 @@ class DocumentTemplateService {
     private val moneyFormatter = NumberFormat.getCurrencyInstance(Locale.FRANCE)
     private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
+    fun creditNote(documentNumber: String, originalNumber: String, reason: String, total: BigDecimal) = page(
+        title = "Avoir",
+        documentNumber = documentNumber,
+        subtitle = "Correction du document $originalNumber",
+        recipientLabel = "Document d'origine",
+        recipient = originalNumber,
+        total = total,
+        body = "<p><strong>Motif :</strong> ${reason.escapeHtml()}</p><p>Cet avoir annule le montant du document d'origine.</p>",
+        isDraft = false,
+    )
+
     fun studentInvoice(
         documentNumber: String,
         year: Int,
         term: TermEntity,
         musician: MusicianEntity,
         draft: StudentInvoiceDraft,
+        isDraft: Boolean,
     ) = page(
         title = "Facture eleve",
         documentNumber = documentNumber,
@@ -52,6 +64,7 @@ class DocumentTemplateService {
               </tbody>
             </table>
         """.trimIndent(),
+        isDraft = isDraft,
     )
 
     fun studentInvoiceSummary(
@@ -61,6 +74,7 @@ class DocumentTemplateService {
         drafts: List<StudentInvoiceDraft>,
         musiciansById: Map<UUID, MusicianEntity>,
         total: BigDecimal,
+        isDraft: Boolean,
     ) = page(
         title = "Synthese factures eleves",
         documentNumber = documentNumber,
@@ -97,6 +111,7 @@ class DocumentTemplateService {
               </tbody>
             </table>
         """.trimIndent(),
+        isDraft = isDraft,
     )
 
     fun teacherInvoiceRequest(
@@ -105,6 +120,7 @@ class DocumentTemplateService {
         term: TermEntity,
         teacher: TeacherEntity,
         draft: TeacherInvoiceRequestDraft,
+        isDraft: Boolean,
     ) = page(
         title = "Demande de facture professeur",
         documentNumber = documentNumber,
@@ -136,6 +152,7 @@ class DocumentTemplateService {
               </tbody>
             </table>
         """.trimIndent(),
+        isDraft = isDraft,
     )
 
     private fun page(
@@ -146,6 +163,7 @@ class DocumentTemplateService {
         recipient: String,
         total: BigDecimal,
         body: String,
+        isDraft: Boolean,
     ) = """
         <html xmlns="http://www.w3.org/1999/xhtml" lang="fr">
           <head>
@@ -175,9 +193,11 @@ class DocumentTemplateService {
               .total strong { color: #0f766e; font-size: 24px; }
               .hours-total { color: #667085; margin-top: 14px; text-align: right; }
               .footer { border-top: 1px solid #e4e7ec; color: #98a2b3; font-size: 10px; margin-top: 22px; padding-top: 8px; width: 100%; }
+              .draft-banner { border: 2px solid #ea580c; color: #c2410c; font-size: 15px; font-weight: 800; letter-spacing: .08em; margin-bottom: 22px; padding: 10px; text-align: center; }
             </style>
           </head>
           <body>
+            ${if (isDraft) "<div class=\"draft-banner\">BROUILLON — NON VALIDE</div>" else ""}
             <section class="header">
               <div class="brand">Compta musique</div>
               <h1>${title.escapeHtml()}</h1>

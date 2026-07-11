@@ -14,8 +14,10 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
+import jakarta.persistence.Version
 import org.hibernate.annotations.UpdateTimestamp
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 @Entity
@@ -37,12 +39,19 @@ open class AttendanceEntity : PanacheEntityBase {
     @GeneratedValue(strategy = GenerationType.UUID)
     open var id: UUID? = null
 
+    @Version
+    @Column(name = "version", nullable = false)
+    open var version: Long = 0
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "term_id", nullable = false)
     open lateinit var term: TermEntity
 
     @Column(name = "week", nullable = false)
     open var week: Int = 1
+
+    @Column(name = "session_date", nullable = false)
+    open lateinit var sessionDate: LocalDate
 
     @Enumerated(EnumType.STRING)
     @Column(name = "entity_type", nullable = false, length = 40)
@@ -53,6 +62,10 @@ open class AttendanceEntity : PanacheEntityBase {
 
     @Column(name = "present", nullable = false)
     open var present: Boolean = false
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    open var status: AttendanceStatus = AttendanceStatus.ABSENT
 
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)

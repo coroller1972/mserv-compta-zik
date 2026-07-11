@@ -12,15 +12,29 @@ class IndividualCourseRepository : PanacheRepositoryBase<IndividualCourseEntity,
         """
         select course
         from IndividualCourseEntity course
+        join fetch course.settings
         join fetch course.musician
         join fetch course.teacher
         """.trimIndent(),
+    ).list()
+
+    fun listWithRelationsByYear(year: Int) = find(
+        """
+        select course
+        from IndividualCourseEntity course
+        join fetch course.settings settings
+        join fetch course.musician
+        join fetch course.teacher
+        where settings.year = ?1
+        """.trimIndent(),
+        year,
     ).list()
 
     fun findByIdWithRelations(id: UUID) = find(
         """
         select course
         from IndividualCourseEntity course
+        join fetch course.settings
         join fetch course.musician
         join fetch course.teacher
         where course.id = ?1
@@ -41,17 +55,20 @@ class IndividualCourseRepository : PanacheRepositoryBase<IndividualCourseEntity,
         startTime,
     ).list()
 
-    fun listOccupyingBySlot(weekday: String, startTime: LocalTime) = find(
+    fun listOccupyingBySlot(year: Int, weekday: String, startTime: LocalTime) = find(
         """
         select course
         from IndividualCourseEntity course
+        join fetch course.settings settings
         join fetch course.musician musician
         join fetch course.teacher
-        where course.weekday = ?1
-        and course.startTime = ?2
+        where settings.year = ?1
+        and course.weekday = ?2
+        and course.startTime = ?3
         and course.active = true
         and musician.active = true
         """.trimIndent(),
+        year,
         weekday,
         startTime,
     ).list()
@@ -60,6 +77,7 @@ class IndividualCourseRepository : PanacheRepositoryBase<IndividualCourseEntity,
         """
         select course
         from IndividualCourseEntity course
+        join fetch course.settings
         join fetch course.musician
         join fetch course.teacher
         where course.musician.id = ?1

@@ -10,9 +10,16 @@ enum class AttendanceEntityType {
     WORKSHOP,
 }
 
+enum class AttendanceStatus {
+    PRESENT,
+    ABSENT,
+    CANCELLED,
+}
+
 enum class GeneratedDocumentType {
     STUDENT_INVOICE,
     TEACHER_INVOICE_REQUEST,
+    CREDIT_NOTE,
 }
 
 enum class GeneratedDocumentStatus {
@@ -20,6 +27,13 @@ enum class GeneratedDocumentStatus {
     GENERATED,
     SENT,
     CANCELLED,
+    CREDITED,
+}
+
+enum class AccountingYearStatus {
+    OPEN,
+    REVIEWED,
+    CLOSED,
 }
 
 enum class ExpenseCategory {

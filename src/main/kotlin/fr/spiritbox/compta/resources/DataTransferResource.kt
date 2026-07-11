@@ -9,6 +9,7 @@ import jakarta.ws.rs.GET
 import jakarta.ws.rs.POST
 import jakarta.ws.rs.Path
 import jakarta.ws.rs.Produces
+import jakarta.ws.rs.HeaderParam
 import jakarta.ws.rs.core.Response
 import org.eclipse.microprofile.openapi.annotations.tags.Tag
 
@@ -28,6 +29,12 @@ class DataTransferResource(
     @Path("/import")
     @Consumes("application/json")
     @Produces("application/json")
-    override suspend fun importData(dataTransfer: DataTransfer): Response =
-        Response.ok(dataTransferService.importData(dataTransfer)).build()
+    override suspend fun importData(
+        @HeaderParam("X-Import-Confirmation") xImportConfirmation: String,
+        dataTransfer: DataTransfer,
+    ): Response =
+        Response.ok(dataTransferService.importData(dataTransfer, xImportConfirmation)).build()
+
+    override suspend fun analyzeImport(dataTransfer: DataTransfer): Response =
+        Response.ok(dataTransferService.analyzeImport(dataTransfer)).build()
 }

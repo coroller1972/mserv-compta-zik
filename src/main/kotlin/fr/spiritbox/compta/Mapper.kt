@@ -10,6 +10,7 @@ import fr.spiritbox.compta.domain.MusicianEntity
 import fr.spiritbox.compta.domain.TeacherEntity
 import fr.spiritbox.compta.domain.TermEntity
 import fr.spiritbox.compta.openapi.model.AccountingYearSnapshot
+import fr.spiritbox.compta.openapi.model.AccountingYearStatus
 import fr.spiritbox.compta.openapi.model.Attendance
 import fr.spiritbox.compta.openapi.model.AttendanceEntityType
 import fr.spiritbox.compta.openapi.model.Band
@@ -63,9 +64,15 @@ class Mapper {
     )
 
     fun AccountingYearSettingsEntity.toDto() = Settings(
+        version = version,
         year = year,
+        status = AccountingYearStatus.valueOf(status.name),
+        reviewedAt = reviewedAt?.atOffset(java.time.ZoneOffset.UTC),
+        closedAt = closedAt?.atOffset(java.time.ZoneOffset.UTC),
         teacherHourlyRate = teacherHourlyRate,
         groupMembershipFee = groupMembershipFee,
+        individualCourseHours = individualCourseHours,
+        workshopHours = workshopHours,
         schoolHolidayWeeks = schoolHolidayWeeks["weeks"].orEmpty().sorted(),
         terms = terms
             .sortedWith(compareBy<TermEntity> { it.displayOrder }.thenBy { it.startWeek })
@@ -82,6 +89,7 @@ class Mapper {
 
     fun BandEntity.toDto() = Band(
         id = id,
+        year = settings.year,
         name = name,
         type = BandType.valueOf(type.name),
         teacherId = teacher?.id,
@@ -91,6 +99,7 @@ class Mapper {
 
     fun IndividualCourseEntity.toDto() = IndividualCourse(
         id = id,
+        year = settings.year,
         musicianId = requireNotNull(musician.id) { "Cannot map IndividualCourseEntity without persisted musician id." },
         teacherId = requireNotNull(teacher.id) { "Cannot map IndividualCourseEntity without persisted teacher id." },
         instrument = instrument,
@@ -101,15 +110,19 @@ class Mapper {
     )
 
     fun AttendanceEntity.toDto() = Attendance(
+        version = version,
         id = id,
         termId = requireNotNull(term.id) { "Cannot map AttendanceEntity without persisted term id." },
         week = week,
+        sessionDate = sessionDate,
         entityType = AttendanceEntityType.valueOf(entityType.name),
         entityId = requireNotNull(entityId) { "Cannot map AttendanceEntity without target entity id." },
         present = present,
+        status = fr.spiritbox.compta.openapi.model.AttendanceStatus.valueOf(status.name),
     )
 
     fun ExpenseEntity.toDto() = Expense(
+        version = version,
         id = id,
         year = year,
         date = date,
@@ -120,6 +133,7 @@ class Mapper {
     )
 
     fun GeneratedDocumentEntity.toDto() = GeneratedDocument(
+        version = version,
         id = id,
         termId = requireNotNull(term.id) { "Cannot map GeneratedDocumentEntity without persisted term id." },
         type = GeneratedDocumentType.valueOf(type.name),
@@ -130,6 +144,11 @@ class Mapper {
         fileName = fileName,
         contentType = contentType,
         totalAmount = totalAmount,
+        parentDocumentId = parentDocument?.id,
+        correctionReason = correctionReason,
+        sentAt = sentAt?.atOffset(java.time.ZoneOffset.UTC),
+        cancelledAt = cancelledAt?.atOffset(java.time.ZoneOffset.UTC),
+        creditedAt = creditedAt?.atOffset(java.time.ZoneOffset.UTC),
     )
      
 

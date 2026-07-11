@@ -18,10 +18,24 @@ class BandRepository : PanacheRepositoryBase<BandEntity, UUID> {
         """.trimIndent(),
     ).list()
 
+    fun listWithMembersByYear(year: Int) = find(
+        """
+        select distinct band
+        from BandEntity band
+        join fetch band.settings settings
+        left join fetch band.teacher
+        left join fetch band.members member
+        left join fetch member.musician
+        where settings.year = ?1
+        """.trimIndent(),
+        year,
+    ).list()
+
     fun findByIdWithMembers(id: UUID) = find(
         """
         select distinct band
         from BandEntity band
+        join fetch band.settings
         left join fetch band.teacher
         left join fetch band.members member
         left join fetch member.musician

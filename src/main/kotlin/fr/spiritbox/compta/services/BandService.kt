@@ -10,6 +10,7 @@ import fr.spiritbox.compta.openapi.model.Band
 import fr.spiritbox.compta.openapi.model.BandMembers
 import fr.spiritbox.compta.repositories.BandMemberRepository
 import fr.spiritbox.compta.repositories.BandRepository
+import fr.spiritbox.compta.repositories.AccountingYearSettingsRepository
 import fr.spiritbox.compta.repositories.MusicianRepository
 import fr.spiritbox.compta.repositories.TeacherRepository
 import fr.spiritbox.compta.utils.PanacheCoroutine
@@ -25,12 +26,14 @@ class BandService(
     private val bandMemberRepository: BandMemberRepository,
     private val teacherRepository: TeacherRepository,
     private val musicianRepository: MusicianRepository,
+    private val accountingYearSettingsRepository: AccountingYearSettingsRepository,
+    private val lifecycleService: AccountingYearLifecycleService,
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper
 ) {
 
-    suspend fun bands(): List<Band> = panacheCoroutine.withSession {
-        val bands = bandRepository.listWithMembers().awaitSuspending()
+    suspend fun bands(year: Int): List<Band> = panacheCoroutine.withSession {
+        val bands = bandRepository.listWithMembersByYear(year).awaitSuspending()
 
         bands.map { mapper.run { it.toDto() } }
     }
@@ -40,7 +43,10 @@ class BandService(
             throw BadRequestException("Band id must not be provided when creating a band.")
         }
 
+        val settings = getSettings(requireYear(band.year))
+        lifecycleService.requireStructureMutable(settings)
         val entity = BandEntity().apply {
+            this.settings = settings
             name = band.name
             type = BandType.valueOf(band.type.name)
             teacher = band.teacherId?.let { getTeacher(it) }
@@ -53,6 +59,8 @@ class BandService(
     }
 
     suspend fun deleteBand(id: UUID): Unit = panacheCoroutine.withTransaction {
+        val entity = getBandForUpdate(id)
+        lifecycleService.requireStructureMutable(entity.settings)
         val deleted = bandRepository.delete("id", id).awaitSuspending()
         if (deleted == 0L) {
             throw NotFoundException("Band $id was not found.")
@@ -61,6 +69,7 @@ class BandService(
 
     suspend fun replaceBandMembers(id: UUID, bandMembers: BandMembers): Band = panacheCoroutine.withTransaction {
         val entity = getBandForUpdate(id)
+        lifecycleService.requireStructureMutable(entity.settings)
         replaceMembers(entity, bandMembers.memberIds)
 
         mapper.run { getBand(id).toDto() }
@@ -72,6 +81,8 @@ class BandService(
         }
 
         val entity = getBandForUpdate(id)
+        lifecycleService.requireStructureMutable(entity.settings)
+        requireSameYear(entity, requireYear(band.year))
         entity.name = band.name
         entity.type = BandType.valueOf(band.type.name)
         entity.teacher = band.teacherId?.let { getTeacher(it) }
@@ -85,12 +96,25 @@ class BandService(
         teacherRepository.find("id", id).firstResult().awaitSuspending()
             ?: throw NotFoundException("Teacher $id was not found.")
 
+    private suspend fun getSettings(year: Int) = accountingYearSettingsRepository.findByYearWithTerms(year)
+        .awaitSuspending()
+        ?: throw NotFoundException("Accounting year $year was not found.")
+
+    private fun requireSameYear(entity: BandEntity, year: Int) {
+        if (entity.settings.year != year) {
+            throw BadRequestException("Band year ${entity.settings.year} cannot be changed to $year.")
+        }
+    }
+
+    private fun requireYear(year: Int?): Int = year
+        ?: throw BadRequestException("Band year is required.")
+
     private suspend fun getBand(id: UUID): BandEntity =
         bandRepository.findByIdWithMembers(id).awaitSuspending()
             ?: throw NotFoundException("Band $id was not found.")
 
     private suspend fun getBandForUpdate(id: UUID): BandEntity =
-        bandRepository.find("id", id).firstResult().awaitSuspending()
+        bandRepository.findByIdWithMembers(id).awaitSuspending()
             ?: throw NotFoundException("Band $id was not found.")
 
     private suspend fun replaceMembers(band: BandEntity, memberIds: List<UUID>) {

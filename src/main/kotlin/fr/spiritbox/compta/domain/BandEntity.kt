@@ -29,6 +29,10 @@ open class BandEntity : PanacheEntityBase {
     @GeneratedValue(strategy = GenerationType.UUID)
     open var id: UUID? = null
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "settings_id", nullable = false)
+    open lateinit var settings: AccountingYearSettingsEntity
+
     @Column(name = "name", nullable = false, length = 160)
     open var name: String = ""
 

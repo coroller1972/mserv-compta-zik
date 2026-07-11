@@ -2,6 +2,7 @@ package fr.spiritbox.compta.services
 
 import fr.spiritbox.compta.Mapper
 import fr.spiritbox.compta.domain.MusicianEntity
+import fr.spiritbox.compta.domain.AccountingYearStatus
 import fr.spiritbox.compta.openapi.model.Musician
 import fr.spiritbox.compta.repositories.IndividualCourseRepository
 import fr.spiritbox.compta.repositories.MusicianRepository
@@ -36,6 +37,7 @@ class MusicianService(
         entity.active = false
         individualCourseRepository.listByMusician(id)
             .awaitSuspending()
+            .filter { course -> course.settings.status == AccountingYearStatus.OPEN }
             .forEach { course -> course.active = false }
     }
 
@@ -43,6 +45,12 @@ class MusicianService(
         musicianRepository.find("order by lastName, firstName").list()
             .awaitSuspending()
             .map { mapper.run { it.toDto() } }
+    }
+
+    suspend fun restoreMusician(id: UUID): Musician = panacheCoroutine.withTransaction {
+        val entity = getMusician(id)
+        entity.active = true
+        mapper.run { entity.toDto() }
     }
 
     suspend fun updateMusician(id: UUID, musician: Musician): Musician = panacheCoroutine.withTransaction {

@@ -21,6 +21,7 @@ import javax.crypto.spec.SecretKeySpec
 class JwtAuthenticationFilter(
     @ConfigProperty(name = "auth.jwt.issuer") private val issuer: String,
     @ConfigProperty(name = "auth.jwt.secret") private val secret: String,
+    private val authenticatedUser: AuthenticatedUser,
 ) : ContainerRequestFilter {
     override fun filter(requestContext: ContainerRequestContext) {
         if (isPublic(requestContext)) return
@@ -38,6 +39,7 @@ class JwtAuthenticationFilter(
         }
 
         requestContext.setProperty("auth.userId", claims.subject)
+        authenticatedUser.userId = claims.subject
         requestContext.setProperty("auth.roles", claims.roles)
         requestContext.setProperty("auth.permissions", claims.permissions)
 
@@ -125,23 +127,38 @@ class JwtAuthenticationFilter(
 
 private val endpointPermissions =
     listOf(
+        EndpointPermission("GET", Regex("""audit-events$"""), listOf("CONFIG_TERMS")),
         EndpointPermission("GET", Regex("""data/export$"""), listOf("IMPORT_EXPORT")),
         EndpointPermission("POST", Regex("""data/import$"""), listOf("IMPORT_EXPORT")),
+        EndpointPermission("POST", Regex("""data/import/analyze$"""), listOf("IMPORT_EXPORT")),
         EndpointPermission(
             "GET",
             Regex("""accounting-years/\d+/snapshot$"""),
-            listOf("PRESENCE_READ", "MUSICIENS_READ", "GROUPS_READ", "EXPENSES_READ", "BILLING_READ"),
+            listOf("PRESENCE_READ", "MUSICIENS_READ", "MUSICIENS_ARCHIVED", "GROUPS_READ", "EXPENSES_READ", "BILLING_READ"),
         ),
         EndpointPermission(
             "PUT",
             Regex("""accounting-years/\d+/settings$"""),
             listOf("CONFIG_FINANCIALS", "CONFIG_TERMS", "CONFIG_HOLIDAYS"),
         ),
+        EndpointPermission(
+            "PUT",
+            Regex("""accounting-years/\d+/status$"""),
+            listOf("CONFIG_TERMS"),
+        ),
+        EndpointPermission(
+            "POST",
+            Regex("""accounting-years/\d+/copy-configuration-from/\d+$"""),
+            listOf("CONFIG_TERMS"),
+        ),
         EndpointPermission("GET", Regex("""accounting-years/\d+/terms/[^/]+/attendance$"""), listOf("PRESENCE_READ")),
+        EndpointPermission("GET", Regex("""accounting-years/\d+/terms/[^/]+/documents$"""), listOf("BILLING_READ")),
         EndpointPermission("GET", Regex("""accounting-years/\d+/terms/[^/]+/billing$"""), listOf("BILLING_READ")),
         EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/student-invoices$"""), listOf("BILLING_PRINT")),
+        EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/student-invoices/finalize$"""), listOf("BILLING_PRINT")),
         EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/student-invoices/summary$"""), listOf("BILLING_PRINT")),
         EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/teacher-invoice-requests$"""), listOf("BILLING_PRINT")),
+        EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/teacher-invoice-requests/finalize$"""), listOf("BILLING_PRINT")),
         EndpointPermission("GET", Regex("""accounting-years/\d+/expenses$"""), listOf("EXPENSES_READ")),
         EndpointPermission("POST", Regex("""accounting-years/\d+/expenses$"""), listOf("EXPENSES_WRITE")),
         EndpointPermission("PUT", Regex("""attendance$"""), listOf("PRESENCE_WRITE")),
@@ -149,10 +166,11 @@ private val endpointPermissions =
         EndpointPermission("POST", Regex("""teachers$"""), listOf("CONFIG_TEACHER")),
         EndpointPermission("PUT", Regex("""teachers/[^/]+$"""), listOf("CONFIG_TEACHER")),
         EndpointPermission("DELETE", Regex("""teachers/[^/]+$"""), listOf("CONFIG_TEACHER")),
-        EndpointPermission("GET", Regex("""musicians$"""), listOf("MUSICIENS_READ")),
+        EndpointPermission("GET", Regex("""musicians$"""), listOf("MUSICIENS_READ", "MUSICIENS_ARCHIVED")),
         EndpointPermission("POST", Regex("""musicians$"""), listOf("MUSICIENS_WRITE")),
         EndpointPermission("PUT", Regex("""musicians/[^/]+$"""), listOf("MUSICIENS_WRITE")),
         EndpointPermission("DELETE", Regex("""musicians/[^/]+$"""), listOf("MUSICIENS_WRITE")),
+        EndpointPermission("POST", Regex("""musicians/[^/]+/restore$"""), listOf("MUSICIENS_ARCHIVED")),
         EndpointPermission("GET", Regex("""individual-courses$"""), listOf("MUSICIENS_READ")),
         EndpointPermission("POST", Regex("""individual-courses$"""), listOf("MUSICIENS_WRITE")),
         EndpointPermission("PUT", Regex("""individual-courses/[^/]+$"""), listOf("MUSICIENS_WRITE")),
@@ -165,6 +183,7 @@ private val endpointPermissions =
         EndpointPermission("PUT", Regex("""expenses/[^/]+$"""), listOf("EXPENSES_WRITE")),
         EndpointPermission("DELETE", Regex("""expenses/[^/]+$"""), listOf("EXPENSES_DELETE")),
         EndpointPermission("GET", Regex("""documents/[^/]+$"""), listOf("BILLING_READ")),
+        EndpointPermission("POST", Regex("""documents/[^/]+/(sent|cancel|correct)$"""), listOf("BILLING_PRINT")),
     )
 
 private data class EndpointPermission(

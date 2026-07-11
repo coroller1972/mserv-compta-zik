@@ -19,7 +19,10 @@ import java.util.UUID
 @Table(
     name = "individual_course",
     uniqueConstraints = [
-        UniqueConstraint(name = "uk_individual_course_musician", columnNames = ["musician_id"]),
+        UniqueConstraint(
+            name = "uk_individual_course_settings_musician",
+            columnNames = ["settings_id", "musician_id"],
+        ),
     ],
     indexes = [
         Index(name = "idx_individual_course_teacher", columnList = "teacher_id"),
@@ -30,6 +33,10 @@ open class IndividualCourseEntity : PanacheEntityBase {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     open var id: UUID? = null
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "settings_id", nullable = false)
+    open lateinit var settings: AccountingYearSettingsEntity
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "musician_id", nullable = false)

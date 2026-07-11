@@ -19,8 +19,8 @@ class IndividualCourseResource(
     override suspend fun deleteIndividualCourse(id: UUID): Response =
         individualCourseService.deleteIndividualCourse(id).let { Response.noContent().build() }
 
-    override suspend fun listIndividualCourses(): Response =
-        Response.ok(individualCourseService.listIndividualCourses()).build()
+    override suspend fun listIndividualCourses(year: Int): Response =
+        Response.ok(individualCourseService.listIndividualCourses(year)).build()
 
     override suspend fun updateIndividualCourse(
         id: UUID,

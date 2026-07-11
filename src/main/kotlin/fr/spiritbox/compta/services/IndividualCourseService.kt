@@ -6,6 +6,7 @@ import fr.spiritbox.compta.domain.MusicianEntity
 import fr.spiritbox.compta.domain.TeacherEntity
 import fr.spiritbox.compta.openapi.model.IndividualCourse
 import fr.spiritbox.compta.repositories.IndividualCourseRepository
+import fr.spiritbox.compta.repositories.AccountingYearSettingsRepository
 import fr.spiritbox.compta.repositories.MusicianRepository
 import fr.spiritbox.compta.repositories.TeacherRepository
 import fr.spiritbox.compta.utils.PanacheCoroutine
@@ -22,6 +23,8 @@ class IndividualCourseService(
     private val individualCourseRepository: IndividualCourseRepository,
     private val musicianRepository: MusicianRepository,
     private val teacherRepository: TeacherRepository,
+    private val accountingYearSettingsRepository: AccountingYearSettingsRepository,
+    private val lifecycleService: AccountingYearLifecycleService,
     private val mapper: Mapper,
     private val panacheCoroutine: PanacheCoroutine,
 ) {
@@ -39,14 +42,16 @@ class IndividualCourseService(
     }
 
     suspend fun deleteIndividualCourse(id: UUID): Unit = panacheCoroutine.withTransaction {
+        val entity = getIndividualCourse(id)
+        lifecycleService.requireStructureMutable(entity.settings)
         val deleted = individualCourseRepository.delete("id", id).awaitSuspending()
         if (deleted == 0L) {
             throw NotFoundException("Individual course $id was not found.")
         }
     }
 
-    suspend fun listIndividualCourses(): List<IndividualCourse> = panacheCoroutine.withSession {
-        val courses = individualCourseRepository.listWithRelations().awaitSuspending()
+    suspend fun listIndividualCourses(year: Int): List<IndividualCourse> = panacheCoroutine.withSession {
+        val courses = individualCourseRepository.listWithRelationsByYear(year).awaitSuspending()
 
         courses.map { mapper.run { it.toDto() } }
     }
@@ -63,8 +68,20 @@ class IndividualCourseService(
     }
 
     private suspend fun applyPayload(entity: IndividualCourseEntity, individualCourse: IndividualCourse) {
+        val year = individualCourse.year
+            ?: throw BadRequestException("Individual course year is required.")
         val startTime = parseStartTime(individualCourse.startTime)
-        validateSlotAvailable(entity.id, individualCourse.weekday, startTime, individualCourse.sharedSlot)
+        validateSlotAvailable(entity.id, year, individualCourse.weekday, startTime, individualCourse.sharedSlot)
+
+        if (entity.id == null) {
+            entity.settings = getSettings(year).also(lifecycleService::requireStructureMutable)
+        } else if (entity.settings.year != year) {
+            throw BadRequestException(
+                "Individual course year ${entity.settings.year} cannot be changed to $year.",
+            )
+        } else {
+            lifecycleService.requireStructureMutable(entity.settings)
+        }
 
         entity.musician = getMusician(individualCourse.musicianId)
         entity.teacher = getTeacher(individualCourse.teacherId)
@@ -75,8 +92,14 @@ class IndividualCourseService(
         entity.active = individualCourse.active
     }
 
-    private suspend fun validateSlotAvailable(courseId: UUID?, weekday: String, startTime: LocalTime, sharedSlot: Boolean) {
-        val occupyingCourses = individualCourseRepository.listOccupyingBySlot(weekday, startTime).awaitSuspending()
+    private suspend fun validateSlotAvailable(
+        courseId: UUID?,
+        year: Int,
+        weekday: String,
+        startTime: LocalTime,
+        sharedSlot: Boolean,
+    ) {
+        val occupyingCourses = individualCourseRepository.listOccupyingBySlot(year, weekday, startTime).awaitSuspending()
             .filter { it.id != courseId }
         if (occupyingCourses.isNotEmpty() && !sharedSlot) {
             throw BadRequestException("Slot $weekday $startTime is already occupied.")
@@ -94,6 +117,10 @@ class IndividualCourseService(
     private suspend fun getTeacher(id: UUID): TeacherEntity =
         teacherRepository.find("id", id).firstResult().awaitSuspending()
             ?: throw NotFoundException("Teacher $id was not found.")
+
+    private suspend fun getSettings(year: Int) = accountingYearSettingsRepository.findByYearWithTerms(year)
+        .awaitSuspending()
+        ?: throw NotFoundException("Accounting year $year was not found.")
 
     private fun parseStartTime(startTime: String): LocalTime =
         try {

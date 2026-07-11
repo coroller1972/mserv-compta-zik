@@ -22,6 +22,9 @@ class MusicianResource(
     override suspend fun listMusicians(): Response =
         Response.ok(musicianService.listMusicians()).build()
 
+    override suspend fun restoreMusician(id: UUID): Response =
+        Response.ok(musicianService.restoreMusician(id)).build()
+
     override suspend fun updateMusician(
         id: UUID,
         musician: Musician

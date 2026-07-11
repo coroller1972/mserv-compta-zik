@@ -7,6 +7,16 @@ import java.util.*
 
 @ApplicationScoped
 class TermRepository : PanacheRepositoryBase<TermEntity, UUID> {
+    fun findByIdWithSettings(termId: UUID) = find(
+        """
+        select term
+        from TermEntity term
+        join fetch term.settings
+        where term.id = ?1
+        """.trimIndent(),
+        termId,
+    ).firstResult()
+
     fun findByYearAndId(year: Int, termId: UUID) = find(
         """
         select term

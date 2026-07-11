@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Index
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.UUID
@@ -26,6 +27,10 @@ open class ExpenseEntity : PanacheEntityBase {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     open var id: UUID? = null
+
+    @Version
+    @Column(name = "version", nullable = false)
+    open var version: Long = 0
 
     @Column(name = "year", nullable = false)
     open var year: Int = 0

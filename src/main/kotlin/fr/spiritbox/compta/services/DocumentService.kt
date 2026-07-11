@@ -1,10 +1,19 @@
 package fr.spiritbox.compta.services
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import fr.spiritbox.compta.Mapper
+import fr.spiritbox.compta.domain.GeneratedDocumentEntity
+import fr.spiritbox.compta.domain.GeneratedDocumentStatus
+import fr.spiritbox.compta.domain.GeneratedDocumentType
+import fr.spiritbox.compta.openapi.model.DocumentCorrectionRequest
+import fr.spiritbox.compta.openapi.model.DocumentCorrectionResult
+import fr.spiritbox.compta.openapi.model.GeneratedDocument
 import fr.spiritbox.compta.repositories.GeneratedDocumentRepository
 import fr.spiritbox.compta.utils.PanacheCoroutine
 import io.smallrye.mutiny.coroutines.awaitSuspending
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.ws.rs.NotFoundException
+import jakarta.ws.rs.ClientErrorException
 import jakarta.ws.rs.core.HttpHeaders
 import jakarta.ws.rs.core.MediaType
 import jakarta.ws.rs.core.Response
@@ -17,9 +26,118 @@ import java.util.UUID
 class DocumentService(
     private val generatedDocumentRepository: GeneratedDocumentRepository,
     private val panacheCoroutine: PanacheCoroutine,
+    private val lifecycleService: AccountingYearLifecycleService,
+    private val mapper: Mapper,
+    private val htmlPdfService: HtmlPdfService,
+    private val documentTemplateService: DocumentTemplateService,
+    private val objectMapper: ObjectMapper,
+    private val auditService: AuditService,
     @ConfigProperty(name = "compta.documents.storage-dir", defaultValue = "documents")
     private val storageDirectory: String,
 ) {
+    suspend fun markSent(documentId: UUID): GeneratedDocument = panacheCoroutine.withTransaction {
+        val document = getDocument(documentId)
+        lifecycleService.requireDocumentsMutable(document.term.settings)
+        requireStatus(document, GeneratedDocumentStatus.GENERATED, "mark as sent")
+        document.status = GeneratedDocumentStatus.SENT
+        document.sentAt = java.time.Instant.now()
+        auditService.record("DOCUMENT", document.id, "SENT", mapOf("number" to document.documentNumber))
+        generatedDocumentRepository.flush()
+        mapper.run { document.toDto() }.copy(version = document.version + 1)
+    }
+
+    suspend fun cancel(documentId: UUID, request: DocumentCorrectionRequest): GeneratedDocument = panacheCoroutine.withTransaction {
+        val document = getDocument(documentId)
+        lifecycleService.requireDocumentsMutable(document.term.settings)
+        requireReason(request.reason)
+        requireStatus(document, GeneratedDocumentStatus.GENERATED, "cancel")
+        document.status = GeneratedDocumentStatus.CANCELLED
+        document.correctionReason = request.reason.trim()
+        document.cancelledAt = java.time.Instant.now()
+        auditService.record("DOCUMENT", document.id, "CANCELLED", mapOf("reason" to request.reason.trim()))
+        generatedDocumentRepository.flush()
+        mapper.run { document.toDto() }.copy(version = document.version + 1)
+    }
+
+    suspend fun correct(documentId: UUID, request: DocumentCorrectionRequest): DocumentCorrectionResult = panacheCoroutine.withTransaction {
+        val original = getDocument(documentId)
+        lifecycleService.requireDocumentsMutable(original.term.settings)
+        val reason = requireReason(request.reason)
+        if (original.status !in setOf(GeneratedDocumentStatus.GENERATED, GeneratedDocumentStatus.SENT)) {
+            conflict("Document $documentId cannot be corrected from status ${original.status}.")
+        }
+        val now = java.time.Instant.now()
+        val creditNote = if (original.status == GeneratedDocumentStatus.SENT) {
+            original.status = GeneratedDocumentStatus.CREDITED
+            original.creditedAt = now
+            createCreditNote(original, reason)
+        } else {
+            original.status = GeneratedDocumentStatus.CANCELLED
+            original.cancelledAt = now
+            null
+        }
+        original.correctionReason = reason
+        val revision = generatedDocumentRepository.count("parentDocument.id", original.id).awaitSuspending() + 1
+        val replacement = GeneratedDocumentEntity().apply {
+            term = original.term
+            type = original.type
+            status = GeneratedDocumentStatus.DRAFT
+            musician = original.musician
+            teacher = original.teacher
+            parentDocument = original
+            correctionReason = reason
+            documentNumber = "${original.documentNumber ?: original.id}-R$revision"
+            totalAmount = original.totalAmount
+        }
+        generatedDocumentRepository.persist(replacement).awaitSuspending()
+        auditService.record("DOCUMENT", original.id, "CORRECTED", mapOf("reason" to reason, "replacementId" to replacement.id, "creditNoteId" to creditNote?.id))
+        generatedDocumentRepository.flush()
+        DocumentCorrectionResult(
+            original = mapper.run { original.toDto() }.copy(version = original.version + 1),
+            creditNote = creditNote?.let { mapper.run { it.toDto() } },
+            replacement = mapper.run { replacement.toDto() },
+        )
+    }
+
+    private suspend fun createCreditNote(original: GeneratedDocumentEntity, reason: String): GeneratedDocumentEntity {
+        val originalNumber = original.documentNumber ?: original.id.toString()
+        val creditNumber = "AV-$originalNumber"
+        val fileName = "$creditNumber.pdf".replace(Regex("[^A-Za-z0-9._-]"), "-")
+        val credit = GeneratedDocumentEntity().apply {
+            term = original.term
+            type = GeneratedDocumentType.CREDIT_NOTE
+            status = GeneratedDocumentStatus.GENERATED
+            musician = original.musician
+            teacher = original.teacher
+            parentDocument = original
+            correctionReason = reason
+            documentNumber = creditNumber
+            this.fileName = fileName
+            contentType = "application/pdf"
+            totalAmount = original.totalAmount
+            metadata = objectMapper.valueToTree(mapOf("originalDocumentId" to original.id, "reason" to reason, "amount" to original.totalAmount))
+            storagePath = htmlPdfService.writeHtmlPdf(
+                "${original.term.settings.year}/${original.term.id}/$fileName",
+                documentTemplateService.creditNote(creditNumber, originalNumber, reason, original.totalAmount),
+            )
+        }
+        generatedDocumentRepository.persist(credit).awaitSuspending()
+        return credit
+    }
+
+    private suspend fun getDocument(id: UUID) = generatedDocumentRepository.findByIdWithRelations(id).awaitSuspending()
+        ?: throw NotFoundException("Document $id was not found.")
+
+    private fun requireReason(reason: String): String = reason.trim().also {
+        if (it.length !in 3..1000) throw jakarta.ws.rs.BadRequestException("A correction reason between 3 and 1000 characters is required.")
+    }
+
+    private fun requireStatus(document: GeneratedDocumentEntity, expected: GeneratedDocumentStatus, action: String) {
+        if (document.status != expected) conflict("Document ${document.id} cannot $action from status ${document.status}.")
+    }
+
+    private fun conflict(message: String): Nothing = throw ClientErrorException(message, Response.Status.CONFLICT)
+
     suspend fun downloadDocument(documentId: UUID): Response = panacheCoroutine.withSession {
         val document = generatedDocumentRepository.find("id", documentId).firstResult().awaitSuspending()
             ?: throw NotFoundException("Document $documentId was not found.")

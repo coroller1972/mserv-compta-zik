@@ -17,7 +17,24 @@ tags:
   - name: Expenses
   - name: Documents
   - name: Data transfer
+  - name: Audit
 paths:
+  /audit-events:
+    get:
+      tags: [Audit]
+      operationId: listAuditEvents
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        '200':
+          description: Événements d'audit les plus récents.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AuditEvent' }
   /data/export:
     get:
       tags: [Data transfer]
@@ -33,6 +50,13 @@ paths:
     post:
       tags: [Data transfer]
       operationId: importData
+      parameters:
+        - name: X-Import-Confirmation
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [REPLACE_ALL_DATA]
       requestBody:
         required: true
         content:
@@ -46,6 +70,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DataImportResult'
+  /data/import/analyze:
+    post:
+      tags: [Data transfer]
+      operationId: analyzeImport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataTransfer'
+      responses:
+        '200':
+          description: Analyse sans modification de la base.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataImportAnalysis'
   /accounting-years/{year}/snapshot:
     get:
       tags: [Accounting years]
@@ -78,6 +119,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Settings'
+  /accounting-years/{year}/status:
+    put:
+      tags: [Accounting years]
+      operationId: updateAccountingYearStatus
+      description: Fait progresser ou rouvre le cycle de vie de l'annee comptable.
+      parameters:
+        - $ref: '#/components/parameters/Year'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountingYearStatusUpdate'
+      responses:
+        '200':
+          description: Statut annuel mis a jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+  /accounting-years/{year}/copy-configuration-from/{sourceYear}:
+    post:
+      tags: [Accounting years]
+      operationId: copyAccountingYearConfiguration
+      description: >-
+        Copie vers une annee vide les tarifs, trimestres, groupes, adhesions et cours
+        d'une annee source. Les personnes restent globales et aucune donnee source n'est modifiee.
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - name: sourceYear
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '201':
+          description: Configuration annuelle copiee.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountingYearSnapshot'
   /accounting-years/{year}/terms/{termId}/attendance:
     get:
       tags: [Accounting years]
@@ -98,6 +181,11 @@ paths:
     get:
       tags: [Accounting years]
       operationId: getTermBilling
+      description: >-
+        Calcule les lignes et totaux financiers canoniques du trimestre.
+        La subvention est egale au montant du aux professeurs, moins 50 % des cours
+        individuels factures aux eleves, moins les cotisations groupes.
+        Exemple : 1000 - (400 * 50 %) - 60 = 740 EUR.
       parameters:
         - $ref: '#/components/parameters/Year'
         - $ref: '#/components/parameters/TermId'
@@ -138,6 +226,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GeneratedDocument'
+  /accounting-years/{year}/terms/{termId}/student-invoices/finalize:
+    post:
+      tags: [Accounting years]
+      operationId: finalizeStudentInvoices
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+      responses:
+        '200':
+          description: Factures élèves validées définitivement et rendues immuables.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GeneratedDocument'
   /accounting-years/{year}/terms/{termId}/teacher-invoice-requests:
     post:
       tags: [Accounting years]
@@ -154,6 +258,37 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/GeneratedDocument'
+  /accounting-years/{year}/terms/{termId}/teacher-invoice-requests/finalize:
+    post:
+      tags: [Accounting years]
+      operationId: finalizeTeacherInvoiceRequests
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+      responses:
+        '200':
+          description: Demandes professeurs validées définitivement et rendues immuables.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GeneratedDocument'
+  /accounting-years/{year}/terms/{termId}/documents:
+    get:
+      tags: [Accounting years]
+      operationId: listTermDocuments
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+      responses:
+        '200':
+          description: Documents actifs et historique du trimestre.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/GeneratedDocument' }
   /accounting-years/{year}/expenses:
     get:
       tags: [Accounting years]
@@ -296,10 +431,25 @@ paths:
       responses:
         '204':
           description: Musicien supprime ou desactive.
+  /musicians/{id}/restore:
+    post:
+      tags: [Musicians]
+      operationId: restoreMusician
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Musicien désarchivé.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Musician'
   /bands:
     get:
       tags: [Bands]
       operationId: listBands
+      parameters:
+        - $ref: '#/components/parameters/YearQuery'
       responses:
         '200':
           description: Groupes.
@@ -367,6 +517,8 @@ paths:
     get:
       tags: [Individual courses]
       operationId: listIndividualCourses
+      parameters:
+        - $ref: '#/components/parameters/YearQuery'
       responses:
         '200':
           description: Cours individuels.
@@ -453,6 +605,36 @@ paths:
               schema:
                 type: string
                 format: binary
+  /documents/{documentId}/sent:
+    post:
+      tags: [Documents]
+      operationId: markDocumentSent
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200': { description: Document marqué comme envoyé, content: { application/json: { schema: { $ref: '#/components/schemas/GeneratedDocument' } } } }
+  /documents/{documentId}/cancel:
+    post:
+      tags: [Documents]
+      operationId: cancelDocument
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/DocumentCorrectionRequest' } } }
+      responses:
+        '200': { description: Document annulé, content: { application/json: { schema: { $ref: '#/components/schemas/GeneratedDocument' } } } }
+  /documents/{documentId}/correct:
+    post:
+      tags: [Documents]
+      operationId: correctDocument
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/DocumentCorrectionRequest' } } }
+      responses:
+        '200': { description: Chaîne de correction créée, content: { application/json: { schema: { $ref: '#/components/schemas/DocumentCorrectionResult' } } } }
 components:
   securitySchemes:
     bearerAuth:
@@ -460,6 +642,13 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     Id:
       name: id
       in: path
@@ -470,6 +659,13 @@ components:
     Year:
       name: year
       in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+    YearQuery:
+      name: year
+      in: query
       required: true
       schema:
         type: integer
@@ -513,6 +709,17 @@ components:
           schema:
             $ref: '#/components/schemas/Expense'
   schemas:
+    AuditEvent:
+      type: object
+      required: [id, entityType, action, userId, details, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        entityType: { type: string }
+        entityId: { type: string, format: uuid }
+        action: { type: string }
+        userId: { type: string }
+        details: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
     AccountingYearSnapshot:
       type: object
       required: [settings, teachers, musicians, bands, individualCourses, attendance, expenses]
@@ -583,7 +790,7 @@ components:
             $ref: '#/components/schemas/Expense'
     DataImportResult:
       type: object
-      required: [importedAt, settings, teachers, musicians, bands, individualCourses, attendance, expenses]
+      required: [importedAt, settings, teachers, musicians, bands, individualCourses, attendance, expenses, backupFile]
       properties:
         importedAt:
           type: string
@@ -608,18 +815,65 @@ components:
           format: int32
         expenses:
           type: integer
+        backupFile:
+          type: string
+    DataImportCounts:
+      type: object
+      required: [settings, teachers, musicians, bands, individualCourses, attendance, expenses, documents]
+      properties:
+        settings: { type: integer, format: int64 }
+        teachers: { type: integer, format: int64 }
+        musicians: { type: integer, format: int64 }
+        bands: { type: integer, format: int64 }
+        individualCourses: { type: integer, format: int64 }
+        attendance: { type: integer, format: int64 }
+        expenses: { type: integer, format: int64 }
+        documents: { type: integer, format: int64 }
+    DataImportAnalysis:
+      type: object
+      required: [valid, errors, current, incoming, confirmationValue]
+      properties:
+        valid: { type: boolean }
+        errors:
+          type: array
+          items: { type: string }
+        current:
+          $ref: '#/components/schemas/DataImportCounts'
+        incoming:
+          $ref: '#/components/schemas/DataImportCounts'
+        confirmationValue:
+          type: string
           format: int32
     Settings:
       type: object
       required: [year, teacherHourlyRate, groupMembershipFee, schoolHolidayWeeks, terms]
       properties:
+        version: { type: integer, format: int64 }
         year:
           type: integer
           format: int32
+        status:
+          $ref: '#/components/schemas/AccountingYearStatus'
+        reviewedAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
         teacherHourlyRate:
           type: number
         groupMembershipFee:
           type: number
+        individualCourseHours:
+          type: number
+          multipleOf: 0.01
+          minimum: 0.01
+          maximum: 24
+        workshopHours:
+          type: number
+          multipleOf: 0.01
+          minimum: 0.01
+          maximum: 24
         schoolHolidayWeeks:
           type: array
           items:
@@ -629,6 +883,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Term'
+    AccountingYearStatus:
+      type: string
+      enum: [OPEN, REVIEWED, CLOSED]
+    AccountingYearStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/AccountingYearStatus'
     Term:
       type: object
       required: [name, startWeek, endWeek, displayOrder]
@@ -685,6 +948,9 @@ components:
         id:
           type: string
           format: uuid
+        year:
+          type: integer
+          format: int32
         name:
           type: string
         type:
@@ -718,6 +984,9 @@ components:
         id:
           type: string
           format: uuid
+        year:
+          type: integer
+          format: int32
         musicianId:
           type: string
           format: uuid
@@ -739,6 +1008,7 @@ components:
       type: object
       required: [termId, week, entityType, entityId, present]
       properties:
+        version: { type: integer, format: int64 }
         id:
           type: string
           format: uuid
@@ -748,6 +1018,10 @@ components:
         week:
           type: integer
           format: int32
+        sessionDate:
+          type: string
+          format: date
+          description: Date effective de la séance. Calculée depuis le planning lorsqu'elle est omise.
         entityType:
           $ref: '#/components/schemas/AttendanceEntityType'
         entityId:
@@ -755,6 +1029,13 @@ components:
           format: uuid
         present:
           type: boolean
+          description: Champ de compatibilité, vrai uniquement lorsque le statut vaut PRESENT.
+        status:
+          $ref: '#/components/schemas/AttendanceStatus'
+    AttendanceStatus:
+      type: string
+      description: L'absence de ligne signifie UNRECORDED.
+      enum: [PRESENT, ABSENT, CANCELLED]
     AttendanceEntityType:
       type: string
       enum: [INDIVIDUAL_COURSE, WORKSHOP]
@@ -762,6 +1043,7 @@ components:
       type: object
       required: [year, date, category, label, amount]
       properties:
+        version: { type: integer, format: int64 }
         id:
           type: string
           format: uuid
@@ -784,11 +1066,15 @@ components:
       enum: [EQUIPMENT, INSTRUMENT_REPAIR, MAINTENANCE, ROOM_RENTAL, CONCERT, OTHER]
     BillingSummary:
       type: object
-      required: [termId, studentInvoices, teacherInvoiceRequests, totals]
+      required: [termId, currency, studentInvoices, teacherInvoiceRequests, totals]
       properties:
         termId:
           type: string
           format: uuid
+        currency:
+          type: string
+          enum: [EUR]
+          description: Devise ISO 4217 de tous les montants de la réponse.
         studentInvoices:
           type: array
           items:
@@ -846,20 +1132,47 @@ components:
           type: number
     BillingTotals:
       type: object
+      description: Totaux canoniques calcules par le backend, exprimes en EUR et arrondis a deux decimales (HALF_UP).
       required: [studentBilling, groupFees, teacherDue, subsidy]
       properties:
         studentBilling:
           type: number
+          multipleOf: 0.01
         groupFees:
           type: number
+          multipleOf: 0.01
         teacherDue:
           type: number
+          multipleOf: 0.01
         subsidy:
           type: number
+          multipleOf: 0.01
+          description: Montant du aux professeurs - 50 % des cours individuels factures - cotisations groupes.
+    Problem:
+      type: object
+      description: Erreur uniforme conforme à RFC 9457.
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+          format: int32
+        code:
+          type: string
+        detail:
+          type: string
+        correlationId:
+          type: string
+          format: uuid
     GeneratedDocument:
       type: object
       required: [termId, type, status, totalAmount]
       properties:
+        version: { type: integer, format: int64 }
         id:
           type: string
           format: uuid
@@ -884,9 +1197,41 @@ components:
           type: string
         totalAmount:
           type: number
+        parentDocumentId:
+          type: string
+          format: uuid
+        correctionReason:
+          type: string
+        sentAt:
+          type: string
+          format: date-time
+        cancelledAt:
+          type: string
+          format: date-time
+        creditedAt:
+          type: string
+          format: date-time
     GeneratedDocumentType:
       type: string
-      enum: [STUDENT_INVOICE, TEACHER_INVOICE_REQUEST]
+      enum: [STUDENT_INVOICE, TEACHER_INVOICE_REQUEST, CREDIT_NOTE]
     GeneratedDocumentStatus:
       type: string
-      enum: [DRAFT, GENERATED, SENT, CANCELLED]
+      enum: [DRAFT, GENERATED, SENT, CANCELLED, CREDITED]
+    DocumentCorrectionRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 1000
+    DocumentCorrectionResult:
+      type: object
+      required: [original, replacement]
+      properties:
+        original:
+          $ref: '#/components/schemas/GeneratedDocument'
+        creditNote:
+          $ref: '#/components/schemas/GeneratedDocument'
+        replacement:
+          $ref: '#/components/schemas/GeneratedDocument'
