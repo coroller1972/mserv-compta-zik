@@ -54,7 +54,6 @@ class AttendanceService(
             this.entityType = entityType
             entityId = attendance.entityId
             this.sessionDate = sessionDate
-            attendanceRepository.persist(this).awaitSuspending()
         }
 
         val status = attendance.status?.let { AttendanceStatus.valueOf(it.name) }
@@ -62,6 +61,8 @@ class AttendanceService(
         entity.status = status
         entity.present = status == AttendanceStatus.PRESENT
         entity.sessionDate = sessionDate
+
+        if (existing == null) attendanceRepository.persist(entity).awaitSuspending()
 
         auditService.record("ATTENDANCE", entity.id, if (existing == null) "CREATED" else "UPDATED", mapOf("week" to entity.week, "sessionDate" to entity.sessionDate, "status" to entity.status.name))
         attendanceRepository.flush()

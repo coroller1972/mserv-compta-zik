@@ -93,6 +93,26 @@ class BillingResourceTest {
             "bands.find { it.name == 'Groupe autonome' }.id",
         )
 
+        val createdAttendanceVersion = given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .contentType("application/json")
+            .body("""{"termId":"$importedTermId","week":4,"entityType":"INDIVIDUAL_COURSE","entityId":"$importedCourseId","present":true}""")
+            .put("/attendance")
+            .then()
+            .statusCode(200)
+            .body("version", equalTo(0))
+            .extract()
+            .path<Number>("version").toLong()
+
+        given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .contentType("application/json")
+            .body("""{"version":$createdAttendanceVersion,"termId":"$importedTermId","week":4,"entityType":"INDIVIDUAL_COURSE","entityId":"$importedCourseId","present":false,"status":"ABSENT"}""")
+            .put("/attendance")
+            .then()
+            .statusCode(200)
+            .body("version", equalTo(1))
+
         given()
             .header("Authorization", "Bearer ${administratorToken()}")
             .header("X-Import-Confirmation", "REPLACE_ALL_DATA")
