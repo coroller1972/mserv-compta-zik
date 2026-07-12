@@ -40,6 +40,7 @@ class JwtAuthenticationFilter(
 
         requestContext.setProperty("auth.userId", claims.subject)
         authenticatedUser.userId = claims.subject
+        authenticatedUser.displayName = claims.displayName ?: claims.subject
         requestContext.setProperty("auth.roles", claims.roles)
         requestContext.setProperty("auth.permissions", claims.permissions)
 
@@ -74,6 +75,7 @@ class JwtAuthenticationFilter(
 
         return JwtClaims(
             subject = stringClaim(payload, "sub") ?: return null,
+            displayName = stringClaim(payload, "name"),
             roles = stringArrayClaim(payload, "roles"),
             permissions = stringArrayClaim(payload, "permissions"),
         )
@@ -127,7 +129,7 @@ class JwtAuthenticationFilter(
 
 private val endpointPermissions =
     listOf(
-        EndpointPermission("GET", Regex("""audit-events$"""), listOf("CONFIG_TERMS")),
+        EndpointPermission("GET", Regex("""audit-events$"""), listOf("CONFIG_AUDIT")),
         EndpointPermission("GET", Regex("""data/export$"""), listOf("IMPORT_EXPORT")),
         EndpointPermission("POST", Regex("""data/import$"""), listOf("IMPORT_EXPORT")),
         EndpointPermission("POST", Regex("""data/import/analyze$"""), listOf("IMPORT_EXPORT")),
@@ -144,12 +146,12 @@ private val endpointPermissions =
         EndpointPermission(
             "PUT",
             Regex("""accounting-years/\d+/status$"""),
-            listOf("CONFIG_TERMS"),
+            listOf("CONFIG_FINANCIALS"),
         ),
         EndpointPermission(
             "POST",
             Regex("""accounting-years/\d+/copy-configuration-from/\d+$"""),
-            listOf("CONFIG_TERMS"),
+            listOf("CONFIG_FINANCIALS"),
         ),
         EndpointPermission("GET", Regex("""accounting-years/\d+/terms/[^/]+/attendance$"""), listOf("PRESENCE_READ")),
         EndpointPermission("GET", Regex("""accounting-years/\d+/terms/[^/]+/documents$"""), listOf("BILLING_READ")),
@@ -202,6 +204,7 @@ private data class EndpointPermission(
 
 private data class JwtClaims(
     val subject: String,
+    val displayName: String?,
     val roles: List<String>,
     val permissions: List<String>,
 )

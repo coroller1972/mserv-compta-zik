@@ -37,7 +37,7 @@ class AuditService(
             this.entityType = entityType
             this.entityId = entityId
             this.action = action
-            userId = authenticatedUser.userId
+            userId = authenticatedUser.displayName
             this.details = objectMapper.valueToTree(details)
         }).awaitSuspending()
     }
