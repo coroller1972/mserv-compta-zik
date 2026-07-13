@@ -84,6 +84,7 @@ class BillingResourceTest {
             .extract()
             .response()
         val importedTermId = importedSnapshot.path<String>("settings.terms[0].id")
+        val importedTeacherId = importedSnapshot.path<String>("teachers[0].id")
         val importedMusicianId = importedSnapshot.path<String>("musicians[0].id")
         val importedCourseId = importedSnapshot.path<String>("individualCourses[0].id")
         var importedAttendanceVersion = importedSnapshot.path<Number>("attendance.find { it.week == 3 }.version").toLong()
@@ -179,6 +180,11 @@ class BillingResourceTest {
             .body("studentInvoices[0].individualCourseAmount", equalTo(27.0f))
             .body("studentInvoices[0].groupMembershipAmount", equalTo(30.0f))
             .body("teacherInvoiceRequests", hasSize<Any>(1))
+            .body("teacherInvoiceRequests[0].weeklyLines", hasSize<Any>(1))
+            .body("teacherInvoiceRequests[0].weeklyLines[0].week", equalTo(2))
+            .body("teacherInvoiceRequests[0].weeklyLines[0].date", equalTo("2099-01-05"))
+            .body("teacherInvoiceRequests[0].weeklyLines[0].hours", equalTo(1.75f))
+            .body("teacherInvoiceRequests[0].weeklyLines[0].amount", equalTo(94.5f))
             .body("teacherInvoiceRequests[0].totalHours", equalTo(1.75f))
             .body("teacherInvoiceRequests[0].totalAmount", equalTo(94.5f))
             .body("totals.studentBilling", equalTo(27.0f))
@@ -360,12 +366,83 @@ class BillingResourceTest {
             .body("bands.name", hasItem("Groupe autonome"))
             .body("bands.name", not(hasItem("Groupe autonome 2100")))
 
+        val secondTeacherId = given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .contentType("application/json")
+            .body("""{"firstName":"Deuxieme","lastName":"Prestataire","instrument":"Violon","active":true}""")
+            .post("/teachers")
+            .then()
+            .statusCode(201)
+            .extract().path<String>("id")
+
+        val secondMusicianId = given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .contentType("application/json")
+            .body("""{"firstName":"Deuxieme","lastName":"Eleve","email":"deuxieme@example.test","active":true}""")
+            .post("/musicians")
+            .then()
+            .statusCode(201)
+            .extract().path<String>("id")
+
+        val secondCourseId = given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .contentType("application/json")
+            .body(
+                """{
+                  "year":2099,
+                  "musicianId":"$secondMusicianId",
+                  "teacherId":"$secondTeacherId",
+                  "instrument":"Violon",
+                  "weekday":"Mercredi",
+                  "startTime":"18:00:00",
+                  "sharedSlot":false,
+                  "active":true
+                }""",
+            )
+            .post("/individual-courses")
+            .then()
+            .statusCode(201)
+            .extract().path<String>("id")
+
         given()
             .header("Authorization", "Bearer ${administratorToken()}")
-            .post("/accounting-years/2099/terms/$importedTermId/teacher-invoice-requests")
+            .contentType("application/json")
+            .body("""{"termId":"$importedTermId","week":2,"entityType":"INDIVIDUAL_COURSE","entityId":"$secondCourseId","present":true}""")
+            .put("/attendance")
+            .then()
+            .statusCode(200)
+
+        given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .post("/accounting-years/2099/terms/$importedTermId/teacher-invoice-requests/$importedTeacherId/prepare")
             .then()
             .statusCode(202)
-            .body("[0].status", equalTo("DRAFT"))
+            .body("teacherId", equalTo(importedTeacherId))
+            .body("status", equalTo("DRAFT"))
+
+        given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .post("/accounting-years/2099/terms/$importedTermId/teacher-invoice-requests/$secondTeacherId/prepare")
+            .then()
+            .statusCode(202)
+            .body("teacherId", equalTo(secondTeacherId))
+            .body("status", equalTo("DRAFT"))
+
+        given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .post("/accounting-years/2099/terms/$importedTermId/teacher-invoice-requests/$importedTeacherId/finalize")
+            .then()
+            .statusCode(200)
+            .body("teacherId", equalTo(importedTeacherId))
+            .body("status", equalTo("GENERATED"))
+
+        given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .get("/accounting-years/2099/terms/$importedTermId/documents")
+            .then()
+            .statusCode(200)
+            .body("find { it.teacherId == '$importedTeacherId' }.status", equalTo("GENERATED"))
+            .body("find { it.teacherId == '$secondTeacherId' }.status", equalTo("DRAFT"))
 
         given()
             .header("Authorization", "Bearer ${administratorToken()}")
@@ -377,10 +454,11 @@ class BillingResourceTest {
 
         given()
             .header("Authorization", "Bearer ${administratorToken()}")
-            .post("/accounting-years/2099/terms/$importedTermId/teacher-invoice-requests/finalize")
+            .post("/accounting-years/2099/terms/$importedTermId/teacher-invoice-requests/$secondTeacherId/finalize")
             .then()
             .statusCode(200)
-            .body("[0].status", equalTo("GENERATED"))
+            .body("teacherId", equalTo(secondTeacherId))
+            .body("status", equalTo("GENERATED"))
 
         given()
             .header("Authorization", "Bearer ${administratorToken()}")
@@ -497,7 +575,7 @@ class BillingResourceTest {
                 "name": "Atelier",
                 "type": "WORKSHOP",
                 "teacherId": "20000000-0000-0000-0000-000000000001",
-                "weekday": "Mardi",
+                "weekday": "Mercredi",
                 "memberIds": ["30000000-0000-0000-0000-000000000001"]
               }, {
                 "id": "40000000-0000-0000-0000-000000000002",

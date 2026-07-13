@@ -274,6 +274,36 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/GeneratedDocument'
+  /accounting-years/{year}/terms/{termId}/teacher-invoice-requests/{teacherId}/prepare:
+    post:
+      tags: [Accounting years]
+      operationId: prepareTeacherInvoiceRequest
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+        - $ref: '#/components/parameters/TeacherId'
+      responses:
+        '202':
+          description: Demande de facture du prestataire preparee independamment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedDocument'
+  /accounting-years/{year}/terms/{termId}/teacher-invoice-requests/{teacherId}/finalize:
+    post:
+      tags: [Accounting years]
+      operationId: finalizeTeacherInvoiceRequest
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+        - $ref: '#/components/parameters/TeacherId'
+      responses:
+        '200':
+          description: Demande du prestataire validee independamment et rendue immuable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedDocument'
   /accounting-years/{year}/terms/{termId}/documents:
     get:
       tags: [Accounting years]
@@ -672,6 +702,13 @@ components:
         format: int32
     TermId:
       name: termId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TeacherId:
+      name: teacherId
       in: path
       required: true
       schema:
@@ -1118,6 +1155,7 @@ components:
           type: number
     TeacherInvoiceWeeklyLine:
       type: object
+      description: Ligne comptable hebdomadaire regroupant la somme de toutes les prestations journalieres du professeur pour la semaine.
       required: [week, date, hours, amount]
       properties:
         week:
@@ -1126,6 +1164,7 @@ components:
         date:
           type: string
           format: date
+          description: Date de debut de la semaine comptable.
         hours:
           type: number
         amount:

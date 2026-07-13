@@ -65,8 +65,14 @@ class AccountingYearResource(
         return Response.accepted(accountingYearService.prepareTeacherInvoiceRequests(year, termId)).build()
     }
 
+    override suspend fun prepareTeacherInvoiceRequest(year: Int, termId: UUID, teacherId: UUID): Response =
+        Response.accepted(accountingYearService.prepareTeacherInvoiceRequest(year, termId, teacherId)).build()
+
     override suspend fun finalizeTeacherInvoiceRequests(year: Int, termId: UUID): Response =
         Response.ok(accountingYearService.finalizeTeacherInvoiceRequests(year, termId)).build()
+
+    override suspend fun finalizeTeacherInvoiceRequest(year: Int, termId: UUID, teacherId: UUID): Response =
+        Response.ok(accountingYearService.finalizeTeacherInvoiceRequest(year, termId, teacherId)).build()
 
     override suspend fun updateSettings(
         year: Int,

@@ -15,6 +15,12 @@ import java.util.*
 class DocumentTemplateService {
     private val moneyFormatter = NumberFormat.getCurrencyInstance(Locale.FRANCE)
     private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+    private val logoDataUri by lazy {
+        val bytes = checkNotNull(javaClass.getResourceAsStream("/pdf-assets/compta-zik-logo.jpg")) {
+            "PDF logo resource is missing."
+        }.use { it.readBytes() }
+        "data:image/jpeg;base64,${Base64.getEncoder().encodeToString(bytes)}"
+    }
 
     fun creditNote(documentNumber: String, originalNumber: String, reason: String, total: BigDecimal) = page(
         title = "Avoir",
@@ -23,7 +29,13 @@ class DocumentTemplateService {
         recipientLabel = "Document d'origine",
         recipient = originalNumber,
         total = total,
-        body = "<p><strong>Motif :</strong> ${reason.escapeHtml()}</p><p>Cet avoir annule le montant du document d'origine.</p>",
+        body = """
+            <section class="message-card">
+              <span class="label">Motif de la correction</span>
+              <strong>${reason.escapeHtml()}</strong>
+              <p>Cet avoir annule le montant du document d'origine.</p>
+            </section>
+        """.trimIndent(),
         isDraft = false,
     )
 
@@ -35,7 +47,7 @@ class DocumentTemplateService {
         draft: StudentInvoiceDraft,
         isDraft: Boolean,
     ) = page(
-        title = "Facture eleve",
+        title = "Facture élève",
         documentNumber = documentNumber,
         subtitle = "${term.name} $year",
         recipientLabel = "Eleve",
@@ -76,14 +88,14 @@ class DocumentTemplateService {
         total: BigDecimal,
         isDraft: Boolean,
     ) = page(
-        title = "Synthese factures eleves",
+        title = "Synthèse factures élèves",
         documentNumber = documentNumber,
         subtitle = "${term.name} $year",
         recipientLabel = "Periode",
         recipient = "${term.name} $year",
         total = total,
         body = """
-            <p>Seuls les cours donnent le droit au Bonus Lien Social</p>
+            <p class="notice">Seuls les cours donnent droit au Bonus Lien Social.</p>
             <table>
               <thead>
                 <tr>
@@ -122,10 +134,10 @@ class DocumentTemplateService {
         draft: TeacherInvoiceRequestDraft,
         isDraft: Boolean,
     ) = page(
-        title = "Demande de facture professeur",
+        title = "Demande de facture",
         documentNumber = documentNumber,
         subtitle = "${term.name} $year",
-        recipientLabel = "Professeur",
+        recipientLabel = "Prestataire",
         recipient = teacher.fullName(),
         total = draft.totalAmount,
         body = """
@@ -133,7 +145,8 @@ class DocumentTemplateService {
               <thead>
                 <tr>
                   <th>Semaine</th>
-                  <th>Date</th>
+                  <th>Début de semaine</th>
+                  <th class="num">Heures</th>
                   <th class="num">Montant</th>
                 </tr>
               </thead>
@@ -144,6 +157,7 @@ class DocumentTemplateService {
                     <tr>
                       <td>S${line.week}</td>
                       <td>${line.date.format(dateFormatter).escapeHtml()}</td>
+                      <td class="num">${line.hours}</td>
                       <td class="num">${money(line.amount)}</td>
                     </tr>
                     """.trimIndent()
@@ -169,40 +183,58 @@ class DocumentTemplateService {
           <head>
             <meta charset="utf-8" />
             <style>
-              @page { size: A4; margin: 22mm 18mm; }
-              body { color: #172033; font-family: Arial, sans-serif; font-size: 12px; line-height: 1.45; }
-              .header { border-bottom: 3px solid #0f766e; padding-bottom: 18px; margin-bottom: 28px; }
-              .brand { color: #0f766e; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-              h1 { font-size: 28px; margin: 7px 0 4px; }
-              .subtitle { color: #667085; font-size: 14px; }
-              .meta { display: table; width: 100%; margin: 0 0 26px; }
-              .meta-card { background: #f6f8fb; border: 1px solid #d9e2ec; display: table-cell; padding: 14px; width: 50%; }
-              .meta-card + .meta-card { border-left: 0; }
-              .label { color: #667085; display: block; font-size: 10px; font-weight: 700; margin-bottom: 5px; text-transform: uppercase; }
-              .value { font-size: 14px; font-weight: 700; }
-              table { -fs-table-paginate: paginate; border-collapse: separate; border-spacing: 0; margin-top: 12px; width: 100%; }
+              @page { size: A4; margin: 16mm 16mm 18mm; }
+              * { box-sizing: border-box; }
+              html, body { background: #ffffff; }
+              body { color: #172027; font-family: Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.5; }
+              .header { background: #09151b; border-bottom: 5px solid #f2ae31; color: #ffffff; margin-bottom: 22px; padding: 17px 19px; }
+              .header-layout { display: table; width: 100%; }
+              .logo-cell { display: table-cell; vertical-align: middle; width: 64px; }
+              .logo { background: #fffefa; border: 1px solid rgba(255, 255, 255, .18); border-radius: 7px; display: block; height: 52px; width: 52px; }
+              .title-cell { display: table-cell; padding-left: 14px; vertical-align: middle; }
+              .brand { color: #72d0b8; font-size: 9px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+              h1 { color: #ffffff; font-size: 25px; font-weight: 700; letter-spacing: -.025em; line-height: 1.1; margin: 5px 0 3px; }
+              .subtitle { color: #bdc9cc; font-size: 11px; }
+              .document-chip { color: #f2ae31; display: table-cell; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-align: right; text-transform: uppercase; vertical-align: top; white-space: nowrap; }
+              .meta { border-collapse: separate; border-spacing: 8px 0; display: table; margin: 0 -8px 24px; width: calc(100% + 16px); }
+              .meta-card { background: #f3f1ec; border-left: 3px solid #176b5d; display: table-cell; padding: 13px 14px; width: 50%; }
+              .meta-card + .meta-card { border-left-color: #f2ae31; }
+              .label { color: #69747d; display: block; font-size: 8px; font-weight: 700; letter-spacing: .1em; margin-bottom: 5px; text-transform: uppercase; }
+              .value { color: #172027; font-size: 12px; font-weight: 700; }
+              .notice { background: #fff8e8; border-left: 3px solid #f2ae31; color: #654c19; margin: 0 0 14px; padding: 9px 11px; }
+              .message-card { background: #f3f1ec; border-left: 3px solid #f2ae31; margin: 10px 0 18px; padding: 15px; }
+              .message-card strong { color: #172027; display: block; font-size: 13px; }
+              .message-card p { color: #69747d; margin: 7px 0 0; }
+              table { -fs-table-paginate: paginate; border-collapse: separate; border-spacing: 0; margin-top: 10px; width: 100%; }
               thead { display: table-header-group; }
               tbody { display: table-row-group; }
               tr { break-inside: avoid; page-break-inside: avoid; }
-              th { background: #0f766e; color: white; font-size: 11px; padding: 9px; text-align: left; text-transform: uppercase; }
-              td { border-bottom: 1px solid #e4e7ec; padding: 10px 9px; }
-              tr:nth-child(even) td { background: #f9fafb; }
+              th { background: #123f49; border-top: 3px solid #f2ae31; color: #ffffff; font-size: 8px; letter-spacing: .06em; padding: 9px 10px; text-align: left; text-transform: uppercase; }
+              td { border-bottom: 1px solid #dfe3e1; padding: 9px 10px; }
+              tr:nth-child(even) td { background: #f8f7f3; }
               .num { text-align: right; }
-              .total { margin-top: 24px; text-align: right; }
-              .total span { color: #667085; display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-              .total strong { color: #0f766e; font-size: 24px; }
-              .hours-total { color: #667085; margin-top: 14px; text-align: right; }
-              .footer { border-top: 1px solid #e4e7ec; color: #98a2b3; font-size: 10px; margin-top: 22px; padding-top: 8px; width: 100%; }
-              .draft-banner { border: 2px solid #ea580c; color: #c2410c; font-size: 15px; font-weight: 800; letter-spacing: .08em; margin-bottom: 22px; padding: 10px; text-align: center; }
+              .total { background: #09151b; border-top: 4px solid #f2ae31; margin-top: 22px; padding: 14px 17px; text-align: right; }
+              .total span { color: #aeb9bd; display: block; font-size: 8px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+              .total strong { color: #72d0b8; font-size: 23px; font-weight: 700; }
+              .footer { border-top: 1px solid #dfe3e1; color: #879196; display: table; font-size: 8px; margin-top: 19px; padding-top: 8px; width: 100%; }
+              .footer-brand { color: #176b5d; display: table-cell; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+              .footer-copy { display: table-cell; text-align: right; }
+              .draft-banner { background: #fff8e8; border: 1px solid #f2ae31; color: #8a5b08; font-size: 10px; font-weight: 700; letter-spacing: .11em; margin: -10px 0 18px; padding: 7px 10px; text-align: center; }
             </style>
           </head>
           <body>
-            ${if (isDraft) "<div class=\"draft-banner\">BROUILLON — NON VALIDE</div>" else ""}
             <section class="header">
-              <div class="brand">Compta musique</div>
-              <h1>${title.escapeHtml()}</h1>
-              <div class="subtitle">${subtitle.escapeHtml()}</div>
+              <div class="header-layout">
+                <div class="logo-cell"><img class="logo" src="$logoDataUri" alt="Compta Zik" /></div>
+                <div class="title-cell">
+                  <div class="brand">Compta Zik · Section musique</div>
+                  <h1>${title.escapeHtml()}</h1>
+                  <div class="subtitle">${subtitle.escapeHtml()}</div>
+                </div>
+                <div class="document-chip">Document comptable</div>
+              </div>
             </section>
+            ${if (isDraft) "<div class=\"draft-banner\">BROUILLON - NON VALIDÉ</div>" else ""}
             <section class="meta">
               <div class="meta-card">
                 <span class="label">Document</span>
@@ -218,7 +250,10 @@ class DocumentTemplateService {
               <span>Total</span>
               <strong>${money(total)}</strong>
             </section>
-            <section class="footer">Document genere automatiquement par Compta musique.</section>
+            <section class="footer">
+              <span class="footer-brand">Compta Zik</span>
+              <span class="footer-copy">Document généré automatiquement par la section musique.</span>
+            </section>
           </body>
         </html>
     """.trimIndent()

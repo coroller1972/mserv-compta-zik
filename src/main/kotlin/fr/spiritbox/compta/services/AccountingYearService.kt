@@ -42,7 +42,6 @@ import jakarta.ws.rs.ClientErrorException
 import jakarta.ws.rs.NotFoundException
 import jakarta.ws.rs.core.Response
 import java.math.BigDecimal
-import java.time.LocalDate
 import java.util.*
 
 @ApplicationScoped
@@ -226,7 +225,7 @@ class AccountingYearService(
 
         val teacherRequests = teachers.mapNotNull { teacher ->
             val teacherId = teacher.id ?: return@mapNotNull null
-            val hoursBySession = mutableMapOf<Pair<Int, LocalDate>, BigDecimal>()
+            val hoursBySession = mutableMapOf<Pair<Int, java.time.LocalDate>, BigDecimal>()
 
             presentAttendance
                 .filter { it.entityType == AttendanceEntityType.INDIVIDUAL_COURSE }
@@ -247,13 +246,19 @@ class AccountingYearService(
 
             val weeklyLines = hoursBySession
                 .filterValues { it > BigDecimal.ZERO }
-                .entries.sortedWith(compareBy({ it.key.second }, { it.key.first }))
-                .map { (key, hours) ->
+                .entries
+                .groupBy { it.key.first }
+                .toSortedMap()
+                .map { (week, sessions) ->
+                    val hours = sessions.fold(BigDecimal.ZERO) { total, session -> total.add(session.value) }
+                    val amount = sessions.fold(BigDecimal.ZERO) { total, session ->
+                        total.add(session.value.multiply(settings.teacherHourlyRate).toMoney())
+                    }
                     TeacherInvoiceWeeklyLine(
-                        week = key.first,
-                        date = key.second,
+                        week = week,
+                        date = SessionDateCalculator.scheduledDate(year, week, "Lundi"),
                         hours = hours.toHours(),
-                        amount = hours.multiply(settings.teacherHourlyRate).toMoney(),
+                        amount = amount.toMoney(),
                     )
                 }
             if (weeklyLines.isEmpty()) {
@@ -408,6 +413,45 @@ class AccountingYearService(
             prepareTeacherInvoiceRequestsInTransaction(year, termId)
         }
 
+    suspend fun prepareTeacherInvoiceRequest(year: Int, termId: UUID, teacherId: UUID): GeneratedDocument =
+        panacheCoroutine.withTransaction {
+            lifecycleService.requireDocumentsMutable(getSettings(year))
+            mapper.run { prepareTeacherInvoiceRequestInTransaction(year, termId, teacherId).toDto() }
+        }
+
+    private suspend fun prepareTeacherInvoiceRequestInTransaction(
+        year: Int,
+        termId: UUID,
+        teacherId: UUID,
+    ): GeneratedDocumentEntity {
+        val term = getTerm(year, termId)
+        val draft = getTermBillingInSession(year, termId).teacherInvoiceRequests
+            .firstOrNull { it.teacherId == teacherId && it.totalAmount > BigDecimal.ZERO }
+            ?: throw NotFoundException("No billable teacher invoice request was found for teacher $teacherId.")
+        val existingDocument = generatedDocumentRepository
+            .listByTermAndType(termId, GeneratedDocumentType.TEACHER_INVOICE_REQUEST)
+            .awaitSuspending()
+            .firstOrNull {
+                it.teacher?.id == teacherId &&
+                    it.status !in setOf(GeneratedDocumentStatus.CANCELLED, GeneratedDocumentStatus.CREDITED)
+            }
+        if (existingDocument != null && existingDocument.status != GeneratedDocumentStatus.DRAFT) {
+            return existingDocument
+        }
+        val document = existingDocument ?: GeneratedDocumentEntity().apply {
+            this.term = term
+            this.type = GeneratedDocumentType.TEACHER_INVOICE_REQUEST
+            this.status = GeneratedDocumentStatus.DRAFT
+            this.teacher = teacherRepository.findById(teacherId).awaitSuspending()
+        }
+        document.totalAmount = draft.totalAmount
+        generateTeacherInvoiceRequestPdf(year, term, document, draft, true)
+        if (document.id == null) {
+            generatedDocumentRepository.persist(document).awaitSuspending()
+        }
+        return document
+    }
+
     private suspend fun prepareTeacherInvoiceRequestsInTransaction(year: Int, termId: UUID): List<GeneratedDocument> {
         val term = getTerm(year, termId)
         val existingDocuments = generatedDocumentRepository
@@ -487,6 +531,20 @@ class AccountingYearService(
                 }
             }
             documents.map { mapper.run { it.toDto() } }
+        }
+
+    suspend fun finalizeTeacherInvoiceRequest(year: Int, termId: UUID, teacherId: UUID): GeneratedDocument =
+        panacheCoroutine.withTransaction {
+            lifecycleService.requireDocumentsMutable(getSettings(year))
+            val document = prepareTeacherInvoiceRequestInTransaction(year, termId, teacherId)
+            if (document.status == GeneratedDocumentStatus.DRAFT) {
+                val term = getTerm(year, termId)
+                val draft = getTermBillingInSession(year, termId).teacherInvoiceRequests
+                    .firstOrNull { it.teacherId == teacherId }
+                    ?: throw NotFoundException("No billable teacher invoice request was found for teacher $teacherId.")
+                generateTeacherInvoiceRequestPdf(year, term, document, draft, false)
+            }
+            mapper.run { document.toDto() }
         }
 
     private fun generateStudentInvoicePdf(
