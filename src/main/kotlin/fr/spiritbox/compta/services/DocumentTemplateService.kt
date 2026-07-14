@@ -133,10 +133,17 @@ class DocumentTemplateService {
         teacher: TeacherEntity,
         draft: TeacherInvoiceRequestDraft,
         isDraft: Boolean,
+        installmentNumber: Int? = null,
+        periodStartWeek: Int? = null,
+        periodEndWeek: Int? = null,
     ) = page(
         title = "Demande de facture",
         documentNumber = documentNumber,
-        subtitle = "${term.name} $year",
+        subtitle = buildString {
+            append("${term.name} $year")
+            if (installmentNumber != null) append(" · Situation n°$installmentNumber")
+            if (periodStartWeek != null && periodEndWeek != null) append(" · Semaines $periodStartWeek à $periodEndWeek")
+        },
         recipientLabel = "Prestataire",
         recipient = teacher.fullName(),
         total = draft.totalAmount,
@@ -165,6 +172,17 @@ class DocumentTemplateService {
         }
               </tbody>
             </table>
+            ${
+                if (draft.adjustments.orEmpty().isEmpty()) "" else """
+                  <h2>Régularisations</h2>
+                  <table>
+                    <thead><tr><th>Document d'origine</th><th>Motif</th><th class="num">Montant</th></tr></thead>
+                    <tbody>${draft.adjustments.orEmpty().joinToString("\n") { adjustment -> """
+                      <tr><td>${(adjustment.sourceDocumentNumber ?: adjustment.sourceDocumentId.toString()).escapeHtml()}</td><td>${adjustment.reason.escapeHtml()}</td><td class="num">${money(adjustment.amount)}</td></tr>
+                    """.trimIndent() }}</tbody>
+                  </table>
+                """.trimIndent()
+            }
         """.trimIndent(),
         isDraft = isDraft,
     )

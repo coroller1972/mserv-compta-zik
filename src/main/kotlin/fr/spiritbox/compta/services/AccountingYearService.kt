@@ -15,6 +15,9 @@ import fr.spiritbox.compta.domain.GeneratedDocumentType
 import fr.spiritbox.compta.domain.MusicianEntity
 import fr.spiritbox.compta.domain.TeacherEntity
 import fr.spiritbox.compta.domain.TermEntity
+import fr.spiritbox.compta.domain.AttendanceEntity
+import fr.spiritbox.compta.domain.AttendanceStatus
+import fr.spiritbox.compta.domain.TeacherInvoiceAttendanceAllocationEntity
 import fr.spiritbox.compta.openapi.model.AccountingYearSnapshot
 import fr.spiritbox.compta.openapi.model.AccountingYearStatusUpdate
 import fr.spiritbox.compta.openapi.model.BillingSummary
@@ -24,6 +27,9 @@ import fr.spiritbox.compta.openapi.model.Settings
 import fr.spiritbox.compta.openapi.model.StudentInvoiceDraft
 import fr.spiritbox.compta.openapi.model.TeacherInvoiceRequestDraft
 import fr.spiritbox.compta.openapi.model.TeacherInvoiceWeeklyLine
+import fr.spiritbox.compta.openapi.model.TeacherInvoicePrepareRequest
+import fr.spiritbox.compta.openapi.model.TeacherInvoiceFinalizeRequest
+import fr.spiritbox.compta.openapi.model.TeacherBillingAdjustment
 import fr.spiritbox.compta.repositories.AccountingYearSettingsRepository
 import fr.spiritbox.compta.repositories.AttendanceRepository
 import fr.spiritbox.compta.repositories.BandRepository
@@ -34,6 +40,8 @@ import fr.spiritbox.compta.repositories.IndividualCourseRepository
 import fr.spiritbox.compta.repositories.MusicianRepository
 import fr.spiritbox.compta.repositories.TeacherRepository
 import fr.spiritbox.compta.repositories.TermRepository
+import fr.spiritbox.compta.repositories.TeacherInvoiceAttendanceAllocationRepository
+import fr.spiritbox.compta.repositories.TeacherBillingAdjustmentRepository
 import fr.spiritbox.compta.utils.PanacheCoroutine
 import io.smallrye.mutiny.coroutines.awaitSuspending
 import jakarta.enterprise.context.ApplicationScoped
@@ -56,6 +64,8 @@ class AccountingYearService(
     private val attendanceRepository: AttendanceRepository,
     private val expenseRepository: ExpenseRepository,
     private val generatedDocumentRepository: GeneratedDocumentRepository,
+    private val allocationRepository: TeacherInvoiceAttendanceAllocationRepository,
+    private val adjustmentRepository: TeacherBillingAdjustmentRepository,
     private val lifecycleService: AccountingYearLifecycleService,
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper,
@@ -223,6 +233,17 @@ class AccountingYearService(
             )
         }
 
+        val attendanceIds = presentAttendance.mapNotNull { it.id }
+        val activeAllocations = if (attendanceIds.isEmpty()) emptyList() else allocationRepository
+            .listActiveByAttendanceIds(attendanceIds).awaitSuspending()
+        val allocatedAttendanceIds = activeAllocations.mapNotNull { it.attendance.id }.toSet()
+        val teacherDocuments = generatedDocumentRepository
+            .listByTermAndType(termId, GeneratedDocumentType.TEACHER_INVOICE_REQUEST).awaitSuspending()
+        val legacyInstallmentsBlocked = teacherDocuments.any {
+            it.status in setOf(GeneratedDocumentStatus.GENERATED, GeneratedDocumentStatus.SENT, GeneratedDocumentStatus.CREDITED) &&
+                it.periodEndWeek == null
+        }
+
         val teacherRequests = teachers.mapNotNull { teacher ->
             val teacherId = teacher.id ?: return@mapNotNull null
             val hoursBySession = mutableMapOf<Pair<Int, java.time.LocalDate>, BigDecimal>()
@@ -261,17 +282,33 @@ class AccountingYearService(
                         amount = amount.toMoney(),
                     )
                 }
-            if (weeklyLines.isEmpty()) {
+            val pendingAdjustments = adjustmentRepository.listPendingByTeacher(teacherId).awaitSuspending()
+            if (weeklyLines.isEmpty() && pendingAdjustments.isEmpty()) {
                 null
             } else {
                 val totalHours = weeklyLines.fold(BigDecimal.ZERO) { total, line -> total.add(line.hours) }.toHours()
                 val totalAmount = weeklyLines.fold(BigDecimal.ZERO) { total, line -> total.add(line.amount) }.toMoney()
+
+                val issuedAmount = teacherDocuments.filter {
+                    it.teacher?.id == teacherId && it.periodEndWeek != null &&
+                        it.status in setOf(GeneratedDocumentStatus.GENERATED, GeneratedDocumentStatus.SENT)
+                }.fold(BigDecimal.ZERO) { sum, document -> sum.add(document.totalAmount) }.toMoney()
+                val pendingAdjustmentAmount = pendingAdjustments.fold(BigDecimal.ZERO) { sum, adjustment -> sum.add(adjustment.amount) }.toMoney()
+                val unallocatedAmount = teacherAttendanceAmount(
+                    teacherId, presentAttendance.filter { it.id !in allocatedAttendanceIds }, individualCourses, bands, settings
+                )
 
                 TeacherInvoiceRequestDraft(
                     teacherId = teacherId,
                     weeklyLines = weeklyLines,
                     totalHours = totalHours,
                     totalAmount = totalAmount,
+                    accruedAmount = totalAmount,
+                    issuedAmount = issuedAmount,
+                    pendingAdjustmentAmount = pendingAdjustmentAmount,
+                    remainingAmount = unallocatedAmount.add(pendingAdjustmentAmount).toMoney(),
+                    installmentsAvailable = !legacyInstallmentsBlocked,
+                    adjustments = pendingAdjustments.map { it.toDto() },
                 )
             }
         }
@@ -305,9 +342,18 @@ class AccountingYearService(
     }
 
     suspend fun listTermAttendance(year: Int, termId: UUID) = panacheCoroutine.withSession {
-        attendanceRepository.listByAccountingYearAndTerm(year, termId)
-            .awaitSuspending()
-            .map { mapper.run { it.toDto() } }
+        val attendance = attendanceRepository.listByAccountingYearAndTerm(year, termId).awaitSuspending()
+        val ids = attendance.mapNotNull { it.id }
+        val locks = if (ids.isEmpty()) emptyMap() else allocationRepository.listActiveByAttendanceIds(ids)
+            .awaitSuspending().associateBy { it.attendance.id }
+        attendance.map { entity ->
+            val allocation = locks[entity.id]
+            mapper.run { entity.toDto() }.copy(
+                billingLocked = allocation != null,
+                billingDocumentId = allocation?.document?.id,
+                billingDocumentNumber = allocation?.document?.documentNumber,
+            )
+        }
     }
 
     suspend fun listTermDocuments(year: Int, termId: UUID) = panacheCoroutine.withSession {
@@ -413,39 +459,56 @@ class AccountingYearService(
             prepareTeacherInvoiceRequestsInTransaction(year, termId)
         }
 
-    suspend fun prepareTeacherInvoiceRequest(year: Int, termId: UUID, teacherId: UUID): GeneratedDocument =
+    suspend fun prepareTeacherInvoiceRequest(year: Int, termId: UUID, teacherId: UUID, request: TeacherInvoicePrepareRequest): GeneratedDocument =
         panacheCoroutine.withTransaction {
             lifecycleService.requireDocumentsMutable(getSettings(year))
-            mapper.run { prepareTeacherInvoiceRequestInTransaction(year, termId, teacherId).toDto() }
+            val document = prepareTeacherInvoiceRequestInTransaction(year, termId, teacherId, request.endWeek)
+            generatedDocumentRepository.flush()
+            mapper.run { document.toDto() }.copy(version = document.version + 1)
         }
 
     private suspend fun prepareTeacherInvoiceRequestInTransaction(
         year: Int,
         termId: UUID,
         teacherId: UUID,
+        endWeek: Int,
     ): GeneratedDocumentEntity {
         val term = getTerm(year, termId)
-        val draft = getTermBillingInSession(year, termId).teacherInvoiceRequests
-            .firstOrNull { it.teacherId == teacherId && it.totalAmount > BigDecimal.ZERO }
-            ?: throw NotFoundException("No billable teacher invoice request was found for teacher $teacherId.")
-        val existingDocument = generatedDocumentRepository
+        if (endWeek !in term.startWeek..term.endWeek) throw BadRequestException("Week $endWeek is outside term ${term.startWeek}-${term.endWeek}.")
+        val documents = generatedDocumentRepository
             .listByTermAndType(termId, GeneratedDocumentType.TEACHER_INVOICE_REQUEST)
             .awaitSuspending()
-            .firstOrNull {
-                it.teacher?.id == teacherId &&
-                    it.status !in setOf(GeneratedDocumentStatus.CANCELLED, GeneratedDocumentStatus.CREDITED)
-            }
-        if (existingDocument != null && existingDocument.status != GeneratedDocumentStatus.DRAFT) {
-            return existingDocument
+        if (documents.any { it.periodEndWeek == null && it.status in setOf(GeneratedDocumentStatus.GENERATED, GeneratedDocumentStatus.SENT, GeneratedDocumentStatus.CREDITED) }) {
+            conflict("This term already contains historical teacher requests. Installments are available from the next term.")
         }
+        val settings = getSettings(year)
+        val courses = individualCourseRepository.listWithRelationsByYear(year).awaitSuspending()
+        val bands = bandRepository.listWithMembersByYear(year).awaitSuspending()
+        val attendance = attendanceRepository.listByAccountingYearAndTerm(year, termId).awaitSuspending()
+            .filter { it.status == AttendanceStatus.PRESENT && it.week <= endWeek && attendanceBelongsToTeacher(it, teacherId, courses, bands) }
+        val ids = attendance.mapNotNull { it.id }
+        val allocated = if (ids.isEmpty()) emptySet() else allocationRepository.listActiveByAttendanceIds(ids)
+            .awaitSuspending().mapNotNull { it.attendance.id }.toSet()
+        val selected = attendance.filter { it.id !in allocated }
+        val adjustments = adjustmentRepository.listPendingByTeacher(teacherId).awaitSuspending()
+        val draft = teacherDraft(teacherId, selected, courses, bands, settings, adjustments.map { it.toDto() })
+        if (draft.totalAmount <= BigDecimal.ZERO) throw BadRequestException("A teacher request with a zero or negative total cannot be prepared.")
+
+        val existingDocument = documents.firstOrNull { it.teacher?.id == teacherId && it.status == GeneratedDocumentStatus.DRAFT }
         val document = existingDocument ?: GeneratedDocumentEntity().apply {
             this.term = term
             this.type = GeneratedDocumentType.TEACHER_INVOICE_REQUEST
             this.status = GeneratedDocumentStatus.DRAFT
             this.teacher = teacherRepository.findById(teacherId).awaitSuspending()
         }
+        val priorNumbers = documents.filter { it.teacher?.id == teacherId && it.installmentNumber != null }.mapNotNull { it.installmentNumber }
+        document.installmentNumber = (priorNumbers.maxOrNull() ?: 0) + 1
+        document.periodStartWeek = selected.minOfOrNull { it.week } ?: endWeek
+        document.periodEndWeek = endWeek
+        document.documentNumber = buildDocumentNumber("DFP", year, term, teacherId) + "-${document.installmentNumber.toString().padStart(2, '0')}"
         document.totalAmount = draft.totalAmount
         generateTeacherInvoiceRequestPdf(year, term, document, draft, true)
+        document.metadata = teacherInstallmentSnapshot(year, term, document, draft, selected, adjustments.map { it.toDto() })
         if (document.id == null) {
             generatedDocumentRepository.persist(document).awaitSuspending()
         }
@@ -533,19 +596,83 @@ class AccountingYearService(
             documents.map { mapper.run { it.toDto() } }
         }
 
-    suspend fun finalizeTeacherInvoiceRequest(year: Int, termId: UUID, teacherId: UUID): GeneratedDocument =
+    suspend fun finalizeTeacherInvoiceRequest(year: Int, termId: UUID, teacherId: UUID, request: TeacherInvoiceFinalizeRequest): GeneratedDocument =
         panacheCoroutine.withTransaction {
             lifecycleService.requireDocumentsMutable(getSettings(year))
-            val document = prepareTeacherInvoiceRequestInTransaction(year, termId, teacherId)
-            if (document.status == GeneratedDocumentStatus.DRAFT) {
-                val term = getTerm(year, termId)
-                val draft = getTermBillingInSession(year, termId).teacherInvoiceRequests
-                    .firstOrNull { it.teacherId == teacherId }
-                    ?: throw NotFoundException("No billable teacher invoice request was found for teacher $teacherId.")
-                generateTeacherInvoiceRequestPdf(year, term, document, draft, false)
-            }
+            val document = generatedDocumentRepository.findByIdWithRelations(request.documentId).awaitSuspending()
+                ?: throw NotFoundException("Draft ${request.documentId} was not found.")
+            if (document.term.id != termId || document.teacher?.id != teacherId || document.status != GeneratedDocumentStatus.DRAFT) conflict("The selected draft is no longer current.")
+            OptimisticLocking.requireVersion(request.version, document.version, "Teacher invoice request")
+            val snapshot = document.metadata ?: conflict("The draft has no accounting snapshot.")
+            val attendanceNodes = snapshot.path("attendance")
+            val attendanceIds = attendanceNodes.map { UUID.fromString(it.path("id").asText()) }
+            val current = if (attendanceIds.isEmpty()) emptyList() else attendanceRepository.find("id in ?1", attendanceIds).list().awaitSuspending()
+            val expected = attendanceNodes.associate { UUID.fromString(it.path("id").asText()) to it.path("version").asLong() }
+            if (current.size != expected.size || current.any { it.status != AttendanceStatus.PRESENT || expected[it.id] != it.version }) conflict("Attendance changed since preview. Regenerate the request before validating it.")
+            if (attendanceIds.isNotEmpty() && allocationRepository.listActiveByAttendanceIds(attendanceIds).awaitSuspending().isNotEmpty()) conflict("Some attendance has already been included in another request.")
+            val adjustmentIds = snapshot.path("adjustments").map { UUID.fromString(it.path("id").asText()) }
+            val adjustments = adjustmentIds.map { id -> adjustmentRepository.findByIdWithRelations(id).awaitSuspending() ?: conflict("An adjustment changed since preview.") }
+            if (adjustments.any { it.appliedDocument != null }) conflict("An adjustment changed since preview.")
+            val term = getTerm(year, termId)
+            val draft = objectMapper.treeToValue(snapshot.path("draft"), TeacherInvoiceRequestDraft::class.java)
+            val currentFingerprint = teacherInstallmentSnapshot(year, term, document, draft, current, adjustments.map { it.toDto() }).path("fingerprint").asText()
+            if (snapshot.path("fingerprint").asText() != currentFingerprint) conflict("Accounting data changed since preview. Regenerate the request before validating it.")
+            generateTeacherInvoiceRequestPdf(year, term, document, draft, false)
+            document.metadata = snapshot
+            current.forEach { attendanceEntity -> allocationRepository.persist(TeacherInvoiceAttendanceAllocationEntity().apply { this.document = document; attendance = attendanceEntity }).awaitSuspending() }
+            adjustments.forEach { it.appliedDocument = document; it.appliedAt = java.time.Instant.now() }
+            auditService.record("DOCUMENT", document.id, "TEACHER_INSTALLMENT_VALIDATED", mapOf("number" to document.documentNumber, "attendanceCount" to current.size))
+            generatedDocumentRepository.flush()
             mapper.run { document.toDto() }
         }
+
+    private fun teacherInstallmentSnapshot(year: Int, term: TermEntity, document: GeneratedDocumentEntity, draft: TeacherInvoiceRequestDraft, attendance: List<AttendanceEntity>, adjustments: List<TeacherBillingAdjustment>): com.fasterxml.jackson.databind.JsonNode {
+        val attendanceLines = attendance.sortedWith(compareBy<AttendanceEntity> { it.week }.thenBy { it.id.toString() }).map {
+            val hours = if (it.entityType == AttendanceEntityType.INDIVIDUAL_COURSE) term.settings.individualCourseHours else term.settings.workshopHours
+            mapOf("id" to it.id, "version" to it.version, "week" to it.week, "sessionDate" to it.sessionDate, "entityType" to it.entityType, "entityId" to it.entityId,
+                "hours" to hours.toHours(), "amount" to hours.multiply(term.settings.teacherHourlyRate).toMoney())
+        }
+        val sortedAdjustments = adjustments.sortedBy { it.id.toString() }
+        val fingerprintPayload = mapOf("attendance" to attendanceLines, "adjustments" to sortedAdjustments)
+        val fingerprint = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(objectMapper.writeValueAsBytes(fingerprintPayload)).joinToString("") { "%02x".format(it) }
+        return objectMapper.valueToTree(mapOf(
+            "schemaVersion" to 2, "capturedAt" to java.time.Instant.now().toString(), "year" to year,
+            "termId" to term.id, "installmentNumber" to document.installmentNumber, "periodStartWeek" to document.periodStartWeek,
+            "periodEndWeek" to document.periodEndWeek, "fingerprint" to fingerprint, "draft" to draft,
+            "attendance" to attendanceLines,
+            "adjustments" to sortedAdjustments,
+        ))
+    }
+
+    private fun attendanceBelongsToTeacher(entry: AttendanceEntity, teacherId: UUID, courses: List<IndividualCourseEntity>, bands: List<BandEntity>): Boolean = when (entry.entityType) {
+        AttendanceEntityType.INDIVIDUAL_COURSE -> courses.any { it.id == entry.entityId && it.teacher.id == teacherId }
+        AttendanceEntityType.WORKSHOP -> bands.any { it.id == entry.entityId && it.type == BandType.WORKSHOP && it.teacher?.id == teacherId }
+    }
+
+    private fun teacherAttendanceAmount(teacherId: UUID, attendance: List<AttendanceEntity>, courses: List<IndividualCourseEntity>, bands: List<BandEntity>, settings: AccountingYearSettingsEntity) =
+        attendance.filter { attendanceBelongsToTeacher(it, teacherId, courses, bands) }.fold(BigDecimal.ZERO) { sum, entry ->
+            sum.add((if (entry.entityType == AttendanceEntityType.INDIVIDUAL_COURSE) settings.individualCourseHours else settings.workshopHours).multiply(settings.teacherHourlyRate).toMoney())
+        }.toMoney()
+
+    private fun teacherDraft(teacherId: UUID, attendance: List<AttendanceEntity>, courses: List<IndividualCourseEntity>, bands: List<BandEntity>, settings: AccountingYearSettingsEntity, adjustments: List<TeacherBillingAdjustment>): TeacherInvoiceRequestDraft {
+        val weekly = attendance.groupBy { it.week }.toSortedMap().map { (week, entries) ->
+            val hours = entries.fold(BigDecimal.ZERO) { sum, entry -> sum.add(if (entry.entityType == AttendanceEntityType.INDIVIDUAL_COURSE) settings.individualCourseHours else settings.workshopHours) }.toHours()
+            TeacherInvoiceWeeklyLine(week, SessionDateCalculator.scheduledDate(settings.year, week, "Lundi"), hours, hours.multiply(settings.teacherHourlyRate).toMoney())
+        }
+        val totalHours = weekly.fold(BigDecimal.ZERO) { sum, line -> sum.add(line.hours) }.toHours()
+        val attendanceAmount = weekly.fold(BigDecimal.ZERO) { sum, line -> sum.add(line.amount) }.toMoney()
+        val adjustmentAmount = adjustments.fold(BigDecimal.ZERO) { sum, line -> sum.add(line.amount) }.toMoney()
+        val total = attendanceAmount.add(adjustmentAmount).toMoney()
+        return TeacherInvoiceRequestDraft(teacherId, weekly, totalHours, total, attendanceAmount, BigDecimal.ZERO, adjustmentAmount, total, true, adjustments)
+    }
+
+    private fun fr.spiritbox.compta.domain.TeacherBillingAdjustmentEntity.toDto() = TeacherBillingAdjustment(
+        id = requireNotNull(id), teacherId = requireNotNull(teacher.id), sourceDocumentId = requireNotNull(sourceDocument.id),
+        sourceDocumentNumber = sourceDocument.documentNumber, appliedDocumentId = appliedDocument?.id, amount = amount, reason = reason,
+    )
+
+    private fun conflict(message: String): Nothing = throw ClientErrorException(message, Response.Status.CONFLICT)
 
     private fun generateStudentInvoicePdf(
         year: Int,
@@ -656,6 +783,9 @@ class AccountingYearService(
                 teacher = teacher,
                 draft = draft,
                 isDraft = isDraft,
+                installmentNumber = document.installmentNumber,
+                periodStartWeek = document.periodStartWeek,
+                periodEndWeek = document.periodEndWeek,
             ),
         )
         document.metadata = immutableSnapshot(

@@ -187,6 +187,8 @@ private val endpointPermissions =
         EndpointPermission("DELETE", Regex("""expenses/[^/]+$"""), listOf("EXPENSES_DELETE")),
         EndpointPermission("GET", Regex("""documents/[^/]+$"""), listOf("BILLING_READ")),
         EndpointPermission("POST", Regex("""documents/[^/]+/(sent|cancel|correct)$"""), listOf("BILLING_PRINT")),
+        EndpointPermission("POST", Regex("""documents/[^/]+/teacher-adjustments$"""), listOf("BILLING_PRINT")),
+        EndpointPermission("DELETE", Regex("""teacher-adjustments/[^/]+$"""), listOf("BILLING_PRINT")),
     )
 
 private data class EndpointPermission(

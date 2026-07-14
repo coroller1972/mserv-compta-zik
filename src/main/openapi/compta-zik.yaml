@@ -282,6 +282,11 @@ paths:
         - $ref: '#/components/parameters/Year'
         - $ref: '#/components/parameters/TermId'
         - $ref: '#/components/parameters/TeacherId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TeacherInvoicePrepareRequest' }
       responses:
         '202':
           description: Demande de facture du prestataire preparee independamment.
@@ -297,6 +302,11 @@ paths:
         - $ref: '#/components/parameters/Year'
         - $ref: '#/components/parameters/TermId'
         - $ref: '#/components/parameters/TeacherId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TeacherInvoiceFinalizeRequest' }
       responses:
         '200':
           description: Demande du prestataire validee independamment et rendue immuable.
@@ -665,6 +675,28 @@ paths:
         content: { application/json: { schema: { $ref: '#/components/schemas/DocumentCorrectionRequest' } } }
       responses:
         '200': { description: Chaîne de correction créée, content: { application/json: { schema: { $ref: '#/components/schemas/DocumentCorrectionResult' } } } }
+  /documents/{documentId}/teacher-adjustments:
+    post:
+      tags: [Documents]
+      operationId: createTeacherBillingAdjustment
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/TeacherBillingAdjustmentRequest' } } }
+      responses:
+        '201': { description: Régularisation en attente créée, content: { application/json: { schema: { $ref: '#/components/schemas/TeacherBillingAdjustment' } } } }
+  /teacher-adjustments/{adjustmentId}:
+    delete:
+      tags: [Documents]
+      operationId: deleteTeacherBillingAdjustment
+      parameters:
+        - name: adjustmentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Régularisation en attente supprimée }
 components:
   securitySchemes:
     bearerAuth:
@@ -1069,6 +1101,14 @@ components:
           description: Champ de compatibilité, vrai uniquement lorsque le statut vaut PRESENT.
         status:
           $ref: '#/components/schemas/AttendanceStatus'
+        billingLocked:
+          type: boolean
+          default: false
+        billingDocumentId:
+          type: string
+          format: uuid
+        billingDocumentNumber:
+          type: string
     AttendanceStatus:
       type: string
       description: L'absence de ligne signifie UNRECORDED.
@@ -1153,6 +1193,42 @@ components:
           type: number
         totalAmount:
           type: number
+        accruedAmount: { type: number }
+        issuedAmount: { type: number }
+        pendingAdjustmentAmount: { type: number }
+        remainingAmount: { type: number }
+        installmentsAvailable: { type: boolean, default: true }
+        adjustments:
+          type: array
+          items: { $ref: '#/components/schemas/TeacherBillingAdjustment' }
+    TeacherInvoicePrepareRequest:
+      type: object
+      required: [endWeek]
+      properties:
+        endWeek: { type: integer, format: int32, minimum: 1, maximum: 53 }
+    TeacherInvoiceFinalizeRequest:
+      type: object
+      required: [documentId, version]
+      properties:
+        documentId: { type: string, format: uuid }
+        version: { type: integer, format: int64 }
+    TeacherBillingAdjustmentRequest:
+      type: object
+      required: [amount, reason]
+      properties:
+        amount: { type: number, multipleOf: 0.01 }
+        reason: { type: string, minLength: 3, maxLength: 1000 }
+    TeacherBillingAdjustment:
+      type: object
+      required: [id, teacherId, sourceDocumentId, amount, reason]
+      properties:
+        id: { type: string, format: uuid }
+        teacherId: { type: string, format: uuid }
+        sourceDocumentId: { type: string, format: uuid }
+        sourceDocumentNumber: { type: string }
+        appliedDocumentId: { type: string, format: uuid }
+        amount: { type: number, multipleOf: 0.01 }
+        reason: { type: string }
     TeacherInvoiceWeeklyLine:
       type: object
       description: Ligne comptable hebdomadaire regroupant la somme de toutes les prestations journalieres du professeur pour la semaine.
@@ -1250,6 +1326,9 @@ components:
         creditedAt:
           type: string
           format: date-time
+        periodStartWeek: { type: integer, format: int32 }
+        periodEndWeek: { type: integer, format: int32 }
+        installmentNumber: { type: integer, format: int32 }
     GeneratedDocumentType:
       type: string
       enum: [STUDENT_INVOICE, TEACHER_INVOICE_REQUEST, CREDIT_NOTE]

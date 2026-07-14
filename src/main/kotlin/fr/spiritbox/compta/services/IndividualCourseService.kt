@@ -9,11 +9,15 @@ import fr.spiritbox.compta.repositories.IndividualCourseRepository
 import fr.spiritbox.compta.repositories.AccountingYearSettingsRepository
 import fr.spiritbox.compta.repositories.MusicianRepository
 import fr.spiritbox.compta.repositories.TeacherRepository
+import fr.spiritbox.compta.repositories.TeacherInvoiceAttendanceAllocationRepository
+import fr.spiritbox.compta.domain.AttendanceEntityType
 import fr.spiritbox.compta.utils.PanacheCoroutine
 import io.smallrye.mutiny.coroutines.awaitSuspending
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.ws.rs.BadRequestException
 import jakarta.ws.rs.NotFoundException
+import jakarta.ws.rs.ClientErrorException
+import jakarta.ws.rs.core.Response
 import java.time.DateTimeException
 import java.time.LocalTime
 import java.util.*
@@ -24,6 +28,7 @@ class IndividualCourseService(
     private val musicianRepository: MusicianRepository,
     private val teacherRepository: TeacherRepository,
     private val accountingYearSettingsRepository: AccountingYearSettingsRepository,
+    private val allocationRepository: TeacherInvoiceAttendanceAllocationRepository,
     private val lifecycleService: AccountingYearLifecycleService,
     private val mapper: Mapper,
     private val panacheCoroutine: PanacheCoroutine,
@@ -44,6 +49,7 @@ class IndividualCourseService(
     suspend fun deleteIndividualCourse(id: UUID): Unit = panacheCoroutine.withTransaction {
         val entity = getIndividualCourse(id)
         lifecycleService.requireStructureMutable(entity.settings)
+        requireNotAllocated(id)
         val deleted = individualCourseRepository.delete("id", id).awaitSuspending()
         if (deleted == 0L) {
             throw NotFoundException("Individual course $id was not found.")
@@ -62,6 +68,7 @@ class IndividualCourseService(
         }
 
         val entity = getIndividualCourse(id)
+        if (entity.teacher.id != individualCourse.teacherId || entity.musician.id != individualCourse.musicianId) requireNotAllocated(id)
         applyPayload(entity, individualCourse)
 
         mapper.run { entity.toDto() }
@@ -109,6 +116,12 @@ class IndividualCourseService(
     private suspend fun getIndividualCourse(id: UUID): IndividualCourseEntity =
         individualCourseRepository.findByIdWithRelations(id).awaitSuspending()
             ?: throw NotFoundException("Individual course $id was not found.")
+
+    private suspend fun requireNotAllocated(id: UUID) {
+        if (allocationRepository.countActiveByTarget(AttendanceEntityType.INDIVIDUAL_COURSE, id).awaitSuspending() > 0) {
+            throw ClientErrorException("A course with paid attendance cannot be deleted or reassigned.", Response.Status.CONFLICT)
+        }
+    }
 
     private suspend fun getMusician(id: UUID): MusicianEntity =
         musicianRepository.find("id", id).firstResult().awaitSuspending()

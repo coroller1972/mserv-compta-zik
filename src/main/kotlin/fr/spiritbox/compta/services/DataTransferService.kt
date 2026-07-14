@@ -30,6 +30,8 @@ import fr.spiritbox.compta.repositories.IndividualCourseRepository
 import fr.spiritbox.compta.repositories.MusicianRepository
 import fr.spiritbox.compta.repositories.TeacherRepository
 import fr.spiritbox.compta.repositories.TermRepository
+import fr.spiritbox.compta.repositories.TeacherInvoiceAttendanceAllocationRepository
+import fr.spiritbox.compta.repositories.TeacherBillingAdjustmentRepository
 import fr.spiritbox.compta.utils.PanacheCoroutine
 import io.smallrye.mutiny.coroutines.awaitSuspending
 import jakarta.enterprise.context.ApplicationScoped
@@ -53,6 +55,8 @@ class DataTransferService(
     private val attendanceRepository: AttendanceRepository,
     private val expenseRepository: ExpenseRepository,
     private val generatedDocumentRepository: GeneratedDocumentRepository,
+    private val allocationRepository: TeacherInvoiceAttendanceAllocationRepository,
+    private val adjustmentRepository: TeacherBillingAdjustmentRepository,
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper,
     private val objectMapper: ObjectMapper,
@@ -261,6 +265,8 @@ class DataTransferService(
         .filterValues { it > 1 }.keys
 
     private suspend fun clearBusinessData() {
+        adjustmentRepository.deleteAll().awaitSuspending()
+        allocationRepository.deleteAll().awaitSuspending()
         generatedDocumentRepository.deleteAll().awaitSuspending()
         expenseRepository.deleteAll().awaitSuspending()
         attendanceRepository.deleteAll().awaitSuspending()

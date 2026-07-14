@@ -149,6 +149,9 @@ class Mapper {
         sentAt = sentAt?.atOffset(java.time.ZoneOffset.UTC),
         cancelledAt = cancelledAt?.atOffset(java.time.ZoneOffset.UTC),
         creditedAt = creditedAt?.atOffset(java.time.ZoneOffset.UTC),
+        periodStartWeek = periodStartWeek,
+        periodEndWeek = periodEndWeek,
+        installmentNumber = installmentNumber,
     )
      
 

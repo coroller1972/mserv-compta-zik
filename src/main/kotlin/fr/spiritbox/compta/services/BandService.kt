@@ -13,11 +13,15 @@ import fr.spiritbox.compta.repositories.BandRepository
 import fr.spiritbox.compta.repositories.AccountingYearSettingsRepository
 import fr.spiritbox.compta.repositories.MusicianRepository
 import fr.spiritbox.compta.repositories.TeacherRepository
+import fr.spiritbox.compta.repositories.TeacherInvoiceAttendanceAllocationRepository
+import fr.spiritbox.compta.domain.AttendanceEntityType
 import fr.spiritbox.compta.utils.PanacheCoroutine
 import io.smallrye.mutiny.coroutines.awaitSuspending
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.ws.rs.BadRequestException
 import jakarta.ws.rs.NotFoundException
+import jakarta.ws.rs.ClientErrorException
+import jakarta.ws.rs.core.Response
 import java.util.*
 
 @ApplicationScoped
@@ -27,6 +31,7 @@ class BandService(
     private val teacherRepository: TeacherRepository,
     private val musicianRepository: MusicianRepository,
     private val accountingYearSettingsRepository: AccountingYearSettingsRepository,
+    private val allocationRepository: TeacherInvoiceAttendanceAllocationRepository,
     private val lifecycleService: AccountingYearLifecycleService,
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper
@@ -61,6 +66,7 @@ class BandService(
     suspend fun deleteBand(id: UUID): Unit = panacheCoroutine.withTransaction {
         val entity = getBandForUpdate(id)
         lifecycleService.requireStructureMutable(entity.settings)
+        requireNotAllocated(entity)
         val deleted = bandRepository.delete("id", id).awaitSuspending()
         if (deleted == 0L) {
             throw NotFoundException("Band $id was not found.")
@@ -83,6 +89,7 @@ class BandService(
         val entity = getBandForUpdate(id)
         lifecycleService.requireStructureMutable(entity.settings)
         requireSameYear(entity, requireYear(band.year))
+        if (entity.teacher?.id != band.teacherId || entity.type.name != band.type.name) requireNotAllocated(entity)
         entity.name = band.name
         entity.type = BandType.valueOf(band.type.name)
         entity.teacher = band.teacherId?.let { getTeacher(it) }
@@ -116,6 +123,13 @@ class BandService(
     private suspend fun getBandForUpdate(id: UUID): BandEntity =
         bandRepository.findByIdWithMembers(id).awaitSuspending()
             ?: throw NotFoundException("Band $id was not found.")
+
+    private suspend fun requireNotAllocated(band: BandEntity) {
+        val id = requireNotNull(band.id)
+        if (allocationRepository.countActiveByTarget(AttendanceEntityType.WORKSHOP, id).awaitSuspending() > 0) {
+            throw ClientErrorException("A workshop with paid attendance cannot be deleted or reassigned.", Response.Status.CONFLICT)
+        }
+    }
 
     private suspend fun replaceMembers(band: BandEntity, memberIds: List<UUID>) {
         val musicians = getMusicians(memberIds.distinct())

@@ -93,6 +93,15 @@ open class GeneratedDocumentEntity : PanacheEntityBase {
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     open var totalAmount: BigDecimal = BigDecimal.ZERO
 
+    @Column(name = "period_start_week")
+    open var periodStartWeek: Int? = null
+
+    @Column(name = "period_end_week")
+    open var periodEndWeek: Int? = null
+
+    @Column(name = "installment_number")
+    open var installmentNumber: Int? = null
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata", columnDefinition = "jsonb")
     open var metadata: JsonNode? = null

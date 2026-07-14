@@ -8,7 +8,12 @@ import fr.spiritbox.compta.domain.GeneratedDocumentType
 import fr.spiritbox.compta.openapi.model.DocumentCorrectionRequest
 import fr.spiritbox.compta.openapi.model.DocumentCorrectionResult
 import fr.spiritbox.compta.openapi.model.GeneratedDocument
+import fr.spiritbox.compta.openapi.model.TeacherBillingAdjustment
+import fr.spiritbox.compta.openapi.model.TeacherBillingAdjustmentRequest
 import fr.spiritbox.compta.repositories.GeneratedDocumentRepository
+import fr.spiritbox.compta.repositories.TeacherInvoiceAttendanceAllocationRepository
+import fr.spiritbox.compta.repositories.TeacherBillingAdjustmentRepository
+import fr.spiritbox.compta.domain.TeacherBillingAdjustmentEntity
 import fr.spiritbox.compta.utils.PanacheCoroutine
 import io.smallrye.mutiny.coroutines.awaitSuspending
 import jakarta.enterprise.context.ApplicationScoped
@@ -25,6 +30,8 @@ import java.util.UUID
 @ApplicationScoped
 class DocumentService(
     private val generatedDocumentRepository: GeneratedDocumentRepository,
+    private val allocationRepository: TeacherInvoiceAttendanceAllocationRepository,
+    private val adjustmentRepository: TeacherBillingAdjustmentRepository,
     private val panacheCoroutine: PanacheCoroutine,
     private val lifecycleService: AccountingYearLifecycleService,
     private val mapper: Mapper,
@@ -54,6 +61,11 @@ class DocumentService(
         document.status = GeneratedDocumentStatus.CANCELLED
         document.correctionReason = request.reason.trim()
         document.cancelledAt = java.time.Instant.now()
+        if (document.type == GeneratedDocumentType.TEACHER_INVOICE_REQUEST && document.installmentNumber != null) {
+            val now = java.time.Instant.now()
+            allocationRepository.listActiveByDocument(documentId).awaitSuspending().forEach { it.releasedAt = now }
+            adjustmentRepository.listAppliedByDocument(documentId).awaitSuspending().forEach { it.appliedDocument = null; it.appliedAt = null }
+        }
         auditService.record("DOCUMENT", document.id, "CANCELLED", mapOf("reason" to request.reason.trim()))
         generatedDocumentRepository.flush()
         mapper.run { document.toDto() }.copy(version = document.version + 1)
@@ -63,6 +75,9 @@ class DocumentService(
         val original = getDocument(documentId)
         lifecycleService.requireDocumentsMutable(original.term.settings)
         val reason = requireReason(request.reason)
+        if (original.type == GeneratedDocumentType.TEACHER_INVOICE_REQUEST && original.installmentNumber != null) {
+            conflict("An installment request cannot be rewritten. Cancel a GENERATED request or report an adjustment after sending it.")
+        }
         if (original.status !in setOf(GeneratedDocumentStatus.GENERATED, GeneratedDocumentStatus.SENT)) {
             conflict("Document $documentId cannot be corrected from status ${original.status}.")
         }
@@ -137,6 +152,36 @@ class DocumentService(
     }
 
     private fun conflict(message: String): Nothing = throw ClientErrorException(message, Response.Status.CONFLICT)
+
+    suspend fun createAdjustment(documentId: UUID, request: TeacherBillingAdjustmentRequest): TeacherBillingAdjustment = panacheCoroutine.withTransaction {
+        val source = getDocument(documentId)
+        lifecycleService.requireDocumentsMutable(source.term.settings)
+        if (source.type != GeneratedDocumentType.TEACHER_INVOICE_REQUEST || source.teacher == null || source.status !in setOf(GeneratedDocumentStatus.GENERATED, GeneratedDocumentStatus.SENT)) {
+            throw jakarta.ws.rs.BadRequestException("The source must be a generated or sent teacher invoice request.")
+        }
+        val amount = request.amount.setScale(2, java.math.RoundingMode.HALF_UP)
+        if (amount.compareTo(java.math.BigDecimal.ZERO) == 0) throw jakarta.ws.rs.BadRequestException("Adjustment amount cannot be zero.")
+        val entity = TeacherBillingAdjustmentEntity().apply {
+            teacher = requireNotNull(source.teacher)
+            sourceDocument = source
+            this.amount = amount
+            reason = requireReason(request.reason)
+        }
+        adjustmentRepository.persist(entity).awaitSuspending()
+        entity.toDto()
+    }
+
+    suspend fun deleteAdjustment(id: UUID): Unit = panacheCoroutine.withTransaction {
+        val entity = adjustmentRepository.findByIdWithRelations(id).awaitSuspending() ?: throw NotFoundException("Adjustment $id was not found.")
+        lifecycleService.requireDocumentsMutable(entity.sourceDocument.term.settings)
+        if (entity.appliedDocument != null) conflict("An adjustment already included in a validated request is immutable.")
+        adjustmentRepository.delete(entity).awaitSuspending()
+    }
+
+    private fun TeacherBillingAdjustmentEntity.toDto() = TeacherBillingAdjustment(
+        id = requireNotNull(id), teacherId = requireNotNull(teacher.id), sourceDocumentId = requireNotNull(sourceDocument.id),
+        sourceDocumentNumber = sourceDocument.documentNumber, appliedDocumentId = appliedDocument?.id, amount = amount, reason = reason,
+    )
 
     suspend fun downloadDocument(documentId: UUID): Response = panacheCoroutine.withSession {
         val document = generatedDocumentRepository.find("id", documentId).firstResult().awaitSuspending()

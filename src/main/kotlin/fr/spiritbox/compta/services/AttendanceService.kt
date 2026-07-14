@@ -10,16 +10,20 @@ import fr.spiritbox.compta.repositories.AttendanceRepository
 import fr.spiritbox.compta.repositories.BandRepository
 import fr.spiritbox.compta.repositories.IndividualCourseRepository
 import fr.spiritbox.compta.repositories.TermRepository
+import fr.spiritbox.compta.repositories.TeacherInvoiceAttendanceAllocationRepository
 import fr.spiritbox.compta.utils.PanacheCoroutine
 import io.smallrye.mutiny.coroutines.awaitSuspending
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.ws.rs.NotFoundException
 import jakarta.ws.rs.BadRequestException
+import jakarta.ws.rs.ClientErrorException
+import jakarta.ws.rs.core.Response
 import java.util.*
 
 @ApplicationScoped
 class AttendanceService(
     private val attendanceRepository: AttendanceRepository,
+    private val allocationRepository: TeacherInvoiceAttendanceAllocationRepository,
     private val termRepository: TermRepository,
     private val individualCourseRepository: IndividualCourseRepository,
     private val bandRepository: BandRepository,
@@ -47,6 +51,14 @@ class AttendanceService(
             entityType = entityType,
             entityId = attendance.entityId,
         ).awaitSuspending()
+        if (existing?.id != null) {
+            allocationRepository.findActiveByAttendanceId(requireNotNull(existing.id)).awaitSuspending()?.let { allocation ->
+                throw ClientErrorException(
+                    "Attendance is locked by teacher invoice request ${allocation.document.documentNumber ?: allocation.document.id}.",
+                    Response.Status.CONFLICT,
+                )
+            }
+        }
         if (existing != null) OptimisticLocking.requireVersion(attendance.version, existing.version, "Attendance")
         val entity = existing ?: AttendanceEntity().apply {
             this.term = term
