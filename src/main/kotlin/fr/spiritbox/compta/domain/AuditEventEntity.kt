@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import io.quarkus.hibernate.reactive.panache.kotlin.PanacheEntityBase
 import jakarta.persistence.*
 import org.hibernate.annotations.CreationTimestamp
+import org.hibernate.annotations.Immutable
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import java.time.Instant
@@ -11,6 +12,7 @@ import java.util.UUID
 
 @Entity
 @Table(name = "audit_event")
+@Immutable
 open class AuditEventEntity : PanacheEntityBase {
     @Id @GeneratedValue(strategy = GenerationType.UUID)
     open var id: UUID? = null

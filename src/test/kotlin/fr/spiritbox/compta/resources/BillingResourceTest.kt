@@ -173,6 +173,34 @@ class BillingResourceTest {
 
         given()
             .header("Authorization", "Bearer ${administratorToken()}")
+            .contentType("application/json")
+            .body(
+                """{
+                  "year":2099,
+                  "date":"2099-02-15",
+                  "category":"EQUIPMENT",
+                  "label":"Cables audio",
+                  "amount":42.50,
+                  "notes":"Test de regression audit append-only"
+                }""",
+            )
+            .post("/accounting-years/2099/expenses")
+            .then()
+            .statusCode(201)
+            .body("year", equalTo(2099))
+            .body("category", equalTo("EQUIPMENT"))
+            .body("label", equalTo("Cables audio"))
+            .body("amount", equalTo(42.5f))
+
+        given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .get("/audit-events?limit=20")
+            .then()
+            .statusCode(200)
+            .body("find { it.entityType == 'EXPENSE' && it.action == 'CREATED' }.details.year", equalTo(2099))
+
+        given()
+            .header("Authorization", "Bearer ${administratorToken()}")
             .get("/accounting-years/2099/terms/$importedTermId/billing")
             .then()
             .statusCode(200)
