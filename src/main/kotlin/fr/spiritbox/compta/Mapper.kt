@@ -25,10 +25,11 @@ import fr.spiritbox.compta.openapi.model.Musician
 import fr.spiritbox.compta.openapi.model.Settings
 import fr.spiritbox.compta.openapi.model.Teacher
 import fr.spiritbox.compta.openapi.model.Term
+import fr.spiritbox.compta.security.SnapshotAccessPolicy
 import jakarta.enterprise.context.ApplicationScoped
 
 @ApplicationScoped
-class Mapper {
+class Mapper(private val snapshotAccess: SnapshotAccessPolicy) {
     fun toSnapshotDto(
         settings: AccountingYearSettingsEntity,
         teachers: List<TeacherEntity>,
@@ -38,14 +39,14 @@ class Mapper {
         attendance: List<AttendanceEntity>,
         expenses: List<ExpenseEntity>,
     ) = AccountingYearSnapshot(
-        settings = settings.toDto(),
+        settings = snapshotAccess.settingsView(settings.toDto()),
         teachers = teachers.map { it.toDto() },
         musicians = musicians.map { it.toDto() },
         bands = bands.map { it.toDto() },
         individualCourses = individualCourses.map { it.toDto() },
         attendance = attendance.map { it.toDto() },
         expenses = expenses.map { it.toDto() },
-    )
+    ).let(snapshotAccess::filter)
 
     fun TeacherEntity.toDto() = Teacher(
         id = id,

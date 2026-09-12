@@ -17,6 +17,7 @@ tags:
   - name: Expenses
   - name: Documents
   - name: Data transfer
+  - name: Backups
   - name: Audit
 paths:
   /audit-events:
@@ -35,13 +36,96 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/AuditEvent' }
+  /data/backups:
+    get:
+      tags: [Backups]
+      operationId: listBackups
+      responses:
+        '200':
+          description: Archives ZIP complètes disponibles, les plus récentes en premier. Permission IMPORT_EXPORT.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BackupInfo' }
+    post:
+      tags: [Backups]
+      operationId: createBackup
+      responses:
+        '201':
+          description: Sauvegarde complète et cohérente créée (données, PDF et audit). Permission IMPORT_EXPORT.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BackupInfo' }
+        '400':
+          description: PDF référencé absent, chemin interdit ou limite de taille dépassée.
+  /data/backups/{fileName}:
+    get:
+      tags: [Backups]
+      operationId: downloadBackup
+      parameters:
+        - name: fileName
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Archive ZIP complète. Permission IMPORT_EXPORT.
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '404':
+          description: Archive absente ou nom invalide.
+  /data/restore/analyze:
+    post:
+      tags: [Backups]
+      operationId: analyzeBackup
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: Format, schéma, références et empreintes PDF vérifiés sans écriture. Permission IMPORT_EXPORT.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BackupAnalysis' }
+        '400':
+          description: Archive invalide ou incompatible.
+        '413':
+          description: Archive dépassant 64 Mio.
+  /data/restore:
+    post:
+      tags: [Backups]
+      operationId: restoreBackup
+      parameters:
+        - name: X-Restore-Confirmation
+          in: header
+          required: true
+          schema: { type: string, enum: [RESTORE_ALL_DATA] }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: Données remplacées atomiquement avec leurs identifiants et PDF originaux. Audit fusionné sans suppression. Sauvegarde préalable obligatoire. Permission IMPORT_EXPORT.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BackupRestoreResult' }
+        '400':
+          description: Confirmation absente, archive invalide, PDF actuel manquant ou contraintes non satisfaites. Aucun remplacement.
+        '413':
+          description: Archive dépassant 64 Mio.
   /data/export:
     get:
       tags: [Data transfer]
       operationId: exportData
       responses:
         '200':
-          description: Export complet des donnees metier.
+          description: Export JSON des données de saisie, sans documents ni liens de facturation. Utiliser /data/backups pour une sauvegarde complète.
           content:
             application/json:
               schema:
@@ -111,14 +195,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Settings'
+              $ref: '#/components/schemas/SettingsUpdate'
       responses:
         '200':
           description: Configuration mise a jour.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Settings'
+                $ref: '#/components/schemas/SettingsView'
   /accounting-years/{year}/status:
     put:
       tags: [Accounting years]
@@ -794,7 +878,7 @@ components:
       required: [settings, teachers, musicians, bands, individualCourses, attendance, expenses]
       properties:
         settings:
-          $ref: '#/components/schemas/Settings'
+          $ref: '#/components/schemas/SettingsView'
         teachers:
           type: array
           items:
@@ -857,6 +941,28 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Expense'
+    BackupInfo:
+      type: object
+      required: [fileName, createdAt, sizeBytes]
+      properties:
+        fileName: { type: string, description: "Nom à utiliser pour le téléchargement via /data/backups/{fileName}." }
+        createdAt: { type: string, format: date-time }
+        sizeBytes: { type: integer, format: int64 }
+    BackupAnalysis:
+      type: object
+      required: [valid, documents, pdfs, confirmationValue]
+      properties:
+        valid: { type: boolean }
+        documents: { type: integer, format: int32 }
+        pdfs: { type: integer, format: int32 }
+        confirmationValue: { type: string }
+    BackupRestoreResult:
+      type: object
+      required: [restoredAt, documents, backupFile]
+      properties:
+        restoredAt: { type: string, format: date-time }
+        documents: { type: integer, format: int32 }
+        backupFile: { type: string, description: Nom de la sauvegarde ZIP créée avant restauration. }
     DataImportResult:
       type: object
       required: [importedAt, settings, teachers, musicians, bands, individualCourses, attendance, expenses, backupFile]
@@ -886,6 +992,7 @@ components:
           type: integer
         backupFile:
           type: string
+          description: Nom de la sauvegarde ZIP complète, téléchargeable via /data/backups/{fileName}.
     DataImportCounts:
       type: object
       required: [settings, teachers, musicians, bands, individualCourses, attendance, expenses, documents]
@@ -916,6 +1023,88 @@ components:
     Settings:
       type: object
       required: [year, teacherHourlyRate, groupMembershipFee, schoolHolidayWeeks, terms]
+      properties:
+        version: { type: integer, format: int64 }
+        year:
+          type: integer
+          format: int32
+        status:
+          $ref: '#/components/schemas/AccountingYearStatus'
+        reviewedAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
+        teacherHourlyRate:
+          type: number
+        groupMembershipFee:
+          type: number
+        individualCourseHours:
+          type: number
+          multipleOf: 0.01
+          minimum: 0.01
+          maximum: 24
+        workshopHours:
+          type: number
+          multipleOf: 0.01
+          minimum: 0.01
+          maximum: 24
+        schoolHolidayWeeks:
+          type: array
+          items:
+            type: integer
+            format: int32
+        terms:
+          type: array
+          items:
+            $ref: '#/components/schemas/Term'
+    SettingsView:
+      description: Financial rates are null unless CONFIG_FINANCIALS or BILLING_READ is granted.
+      type: object
+      required: [year, schoolHolidayWeeks, terms]
+      properties:
+        version: { type: integer, format: int64 }
+        year:
+          type: integer
+          format: int32
+        status:
+          $ref: '#/components/schemas/AccountingYearStatus'
+        reviewedAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
+        teacherHourlyRate:
+          type: number
+          nullable: true
+        groupMembershipFee:
+          type: number
+          nullable: true
+        individualCourseHours:
+          type: number
+          multipleOf: 0.01
+          minimum: 0.01
+          maximum: 24
+        workshopHours:
+          type: number
+          multipleOf: 0.01
+          minimum: 0.01
+          maximum: 24
+        schoolHolidayWeeks:
+          type: array
+          items:
+            type: integer
+            format: int32
+        terms:
+          type: array
+          items:
+            $ref: '#/components/schemas/Term'
+    SettingsUpdate:
+      description: Only supplied fields are changed. Each category requires its corresponding CONFIG permission.
+      type: object
+      required: [year, version]
       properties:
         version: { type: integer, format: int64 }
         year:

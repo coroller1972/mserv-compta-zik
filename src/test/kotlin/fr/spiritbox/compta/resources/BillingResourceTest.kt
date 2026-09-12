@@ -23,6 +23,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 @QuarkusTest
+@io.quarkus.test.common.QuarkusTestResource(fr.spiritbox.compta.security.IdentityStub::class)
 class BillingResourceTest {
     @Inject
     lateinit var dataSource: AgroalDataSource

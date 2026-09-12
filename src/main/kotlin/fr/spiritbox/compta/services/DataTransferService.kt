@@ -1,6 +1,5 @@
 package fr.spiritbox.compta.services
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import fr.spiritbox.compta.Mapper
 import fr.spiritbox.compta.domain.AccountingYearSettingsEntity
 import fr.spiritbox.compta.domain.AccountingYearStatus
@@ -36,9 +35,6 @@ import fr.spiritbox.compta.utils.PanacheCoroutine
 import io.smallrye.mutiny.coroutines.awaitSuspending
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.ws.rs.BadRequestException
-import org.eclipse.microprofile.config.inject.ConfigProperty
-import java.nio.file.Files
-import java.nio.file.Path
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -59,9 +55,7 @@ class DataTransferService(
     private val adjustmentRepository: TeacherBillingAdjustmentRepository,
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper,
-    private val objectMapper: ObjectMapper,
-    @ConfigProperty(name = "compta.documents.storage-dir", defaultValue = "documents")
-    private val storageDirectory: String,
+    private val backupService: BackupService,
 ) {
     suspend fun exportData(): DataTransfer = panacheCoroutine.withSession {
         DataTransfer(
@@ -104,53 +98,43 @@ class DataTransferService(
         if (errors.isNotEmpty()) {
             throw BadRequestException("Import validation failed: ${errors.joinToString("; ")}")
         }
-        val backupFile = writeImportBackup(exportData())
-        return panacheCoroutine.withTransaction {
+        return panacheCoroutine.withExclusiveTransaction {
+            val backupFile = backupService.createWithinTransaction("before-import").fileName
 
-        clearBusinessData()
+            clearBusinessData()
 
-        val importedSettings = importSettings(dataTransfer.settings)
-        val teachersById = importTeachers(dataTransfer.teachers)
-        val musiciansById = importMusicians(dataTransfer.musicians)
-        val bandsById = importBands(
-            dataTransfer.bands,
-            teachersById,
-            musiciansById,
-            importedSettings.settingsByYear,
-            dataTransfer.formatVersion,
-        )
-        val individualCoursesById = importIndividualCourses(
-            dataTransfer.individualCourses,
-            teachersById,
-            musiciansById,
-            importedSettings.settingsByYear,
-            dataTransfer.formatVersion,
-        )
-        importAttendance(dataTransfer.attendance, importedSettings.termsById, individualCoursesById, bandsById)
-        importExpenses(dataTransfer.expenses)
+            val importedSettings = importSettings(dataTransfer.settings)
+            val teachersById = importTeachers(dataTransfer.teachers)
+            val musiciansById = importMusicians(dataTransfer.musicians)
+            val bandsById = importBands(
+                dataTransfer.bands,
+                teachersById,
+                musiciansById,
+                importedSettings.settingsByYear,
+                dataTransfer.formatVersion,
+            )
+            val individualCoursesById = importIndividualCourses(
+                dataTransfer.individualCourses,
+                teachersById,
+                musiciansById,
+                importedSettings.settingsByYear,
+                dataTransfer.formatVersion,
+            )
+            importAttendance(dataTransfer.attendance, importedSettings.termsById, individualCoursesById, bandsById)
+            importExpenses(dataTransfer.expenses)
 
-        DataImportResult(
-            importedAt = OffsetDateTime.now(ZoneOffset.UTC),
-            settings = dataTransfer.settings.size,
-            teachers = dataTransfer.teachers.size,
-            musicians = dataTransfer.musicians.size,
-            bands = dataTransfer.bands.size,
-            individualCourses = dataTransfer.individualCourses.size,
-            attendance = dataTransfer.attendance.size,
-            expenses = dataTransfer.expenses.size,
-            backupFile = backupFile,
-        )
+            DataImportResult(
+                importedAt = OffsetDateTime.now(ZoneOffset.UTC),
+                settings = dataTransfer.settings.size,
+                teachers = dataTransfer.teachers.size,
+                musicians = dataTransfer.musicians.size,
+                bands = dataTransfer.bands.size,
+                individualCourses = dataTransfer.individualCourses.size,
+                attendance = dataTransfer.attendance.size,
+                expenses = dataTransfer.expenses.size,
+                backupFile = backupFile,
+            )
         }
-    }
-
-    private fun writeImportBackup(currentData: DataTransfer): String {
-        val backupDirectory = Path.of(storageDirectory).toAbsolutePath().normalize().resolve("import-backups")
-        Files.createDirectories(backupDirectory)
-        val fileName = "before-import-${OffsetDateTime.now(ZoneOffset.UTC).toString().replace(':', '-')}.json"
-        val backupPath = backupDirectory.resolve(fileName).normalize()
-        require(backupPath.startsWith(backupDirectory)) { "Invalid import backup path." }
-        objectMapper.writerWithDefaultPrettyPrinter().writeValue(backupPath.toFile(), currentData)
-        return backupPath.toString()
     }
 
     private suspend fun currentCounts() = DataImportCounts(

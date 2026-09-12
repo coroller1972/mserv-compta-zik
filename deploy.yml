@@ -52,16 +52,8 @@ spec:
               value: "GET,POST,PUT,DELETE,OPTIONS"
             - name: QUARKUS_HTTP_CORS_HEADERS
               value: "Content-Type,Authorization"
-            - name: AUTH_JWT_ISSUER
-              valueFrom:
-                secretKeyRef:
-                  name: mserv-auth-jwt
-                  key: issuer
-            - name: AUTH_JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: mserv-auth-jwt
-                  key: secret
+            - name: AUTH_IDENTITY_URL
+              value: "http://mserv-identity-svc:8083/api/auth"
           volumeMounts:
             - name: documents
               mountPath: /documents

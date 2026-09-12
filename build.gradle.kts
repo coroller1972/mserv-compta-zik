@@ -19,6 +19,7 @@ dependencies {
     implementation("io.quarkus:quarkus-rest")
     implementation("io.quarkus:quarkus-smallrye-openapi")
     implementation("io.quarkus:quarkus-rest-jackson")
+    implementation("io.quarkus:quarkus-rest-client-jackson")
     implementation("io.quarkus:quarkus-rest-kotlin")
     implementation("io.quarkus:quarkus-kotlin")
     implementation("io.smallrye.reactive:mutiny-kotlin")
@@ -71,6 +72,8 @@ openApiGenerate {
     generatorName.set("kotlin-server")
     inputSpec.set("$rootDir/src/main/openapi/compta-zik.yaml")
     outputDir.set(layout.buildDirectory.dir("generated/openapi").get().asFile.absolutePath)
+    // Raw ZIP request bodies are bounded byte arrays, handled by Quarkus REST.
+    typeMappings.set(mapOf("binary" to "kotlin.ByteArray", "file" to "kotlin.ByteArray"))
     apiPackage.set("fr.spiritbox.compta.openapi.api")
     modelPackage.set("fr.spiritbox.compta.openapi.model")
     globalProperties.set(

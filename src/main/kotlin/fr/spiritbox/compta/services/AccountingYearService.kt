@@ -24,6 +24,10 @@ import fr.spiritbox.compta.openapi.model.BillingSummary
 import fr.spiritbox.compta.openapi.model.BillingTotals
 import fr.spiritbox.compta.openapi.model.GeneratedDocument
 import fr.spiritbox.compta.openapi.model.Settings
+import fr.spiritbox.compta.openapi.model.SettingsUpdate
+import fr.spiritbox.compta.openapi.model.SettingsView
+import fr.spiritbox.compta.security.SnapshotAccessPolicy
+import fr.spiritbox.compta.security.AuthenticatedUser
 import fr.spiritbox.compta.openapi.model.StudentInvoiceDraft
 import fr.spiritbox.compta.openapi.model.TeacherInvoiceRequestDraft
 import fr.spiritbox.compta.openapi.model.TeacherInvoiceWeeklyLine
@@ -73,6 +77,8 @@ class AccountingYearService(
     private val documentTemplateService: DocumentTemplateService,
     private val objectMapper: ObjectMapper,
     private val auditService: AuditService,
+    private val snapshotAccess: SnapshotAccessPolicy,
+    private val authenticatedUser: AuthenticatedUser,
 ) {
     private val defaultTeacherHourlyRate = BigDecimal("54.00")
     private val defaultGroupMembershipFee = BigDecimal("30.00")
@@ -848,9 +854,9 @@ class AccountingYearService(
             .replace(Regex("""[^a-z0-9._-]+"""), "-")
             .trim('-')
 
-    suspend fun updateSettings(year: Int, settings: Settings): Settings =
+    suspend fun updateSettings(year: Int, settings: SettingsUpdate): SettingsView =
         panacheCoroutine.withTransaction {
-            updateSettingsInTransaction(year, settings)
+            snapshotAccess.settingsView(updateSettingsInTransaction(year, settings))
         }
 
     suspend fun updateStatus(year: Int, update: AccountingYearStatusUpdate): Settings =
@@ -886,17 +892,33 @@ class AccountingYearService(
             mapper.run { entity.toDto() }.copy(version = entity.version + 1)
         }
 
-    private suspend fun updateSettingsInTransaction(year: Int, settings: Settings): Settings {
-        if (settings.year != year) {
-            throw BadRequestException("Path year $year does not match payload year ${settings.year}.")
+    private suspend fun updateSettingsInTransaction(year: Int, update: SettingsUpdate): Settings {
+        snapshotAccess.authorizeUpdate(update)
+        if (update.year != year) {
+            throw BadRequestException("Path year $year does not match payload year ${update.year}.")
         }
 
         val existingEntity = accountingYearSettingsRepository.findByYearWithTerms(year).awaitSuspending()
+        if (existingEntity == null) {
+            listOf("CONFIG_FINANCIALS", "CONFIG_TERMS", "CONFIG_HOLIDAYS").forEach(authenticatedUser::requirePermission)
+            if (update.teacherHourlyRate == null || update.groupMembershipFee == null || update.terms == null || update.schoolHolidayWeeks == null) {
+                throw BadRequestException("A new year requires financial rates, terms and holidays.")
+            }
+        }
         val entity = existingEntity
             ?: AccountingYearSettingsEntity().also {
                 it.year = year
                 accountingYearSettingsRepository.persist(it).awaitSuspending()
             }
+        val settings = mapper.run { entity.toDto() }.copy(
+            version = update.version,
+            teacherHourlyRate = update.teacherHourlyRate ?: entity.teacherHourlyRate,
+            groupMembershipFee = update.groupMembershipFee ?: entity.groupMembershipFee,
+            individualCourseHours = update.individualCourseHours ?: entity.individualCourseHours,
+            workshopHours = update.workshopHours ?: entity.workshopHours,
+            schoolHolidayWeeks = update.schoolHolidayWeeks ?: entity.schoolHolidayWeeks["weeks"].orEmpty(),
+            terms = update.terms ?: mapper.run { entity.toDto() }.terms,
+        )
         if (existingEntity != null) OptimisticLocking.requireVersion(settings.version, entity.version, "Accounting year $year settings")
         lifecycleService.requireStructureMutable(entity)
 
@@ -942,18 +964,9 @@ class AccountingYearService(
         .awaitSuspending()
         ?: throw NotFoundException("Accounting year $year was not found.")
 
-    private suspend fun getOrCreateSettings(year: Int): AccountingYearSettingsEntity {
-        val settings = accountingYearSettingsRepository.findByYearWithTerms(year).awaitSuspending()
-            ?: return createDefaultSettings(year)
-
-        if (settings.teacherHourlyRate.compareTo(BigDecimal.ZERO) == 0) {
-            settings.teacherHourlyRate = defaultTeacherHourlyRate
-        }
-        if (settings.groupMembershipFee.compareTo(BigDecimal.ZERO) == 0) {
-            settings.groupMembershipFee = defaultGroupMembershipFee
-        }
-        return settings
-    }
+    private suspend fun getOrCreateSettings(year: Int): AccountingYearSettingsEntity =
+        accountingYearSettingsRepository.findByYearWithTerms(year).awaitSuspending()
+            ?: createDefaultSettings(year)
 
     private suspend fun createDefaultSettings(year: Int): AccountingYearSettingsEntity {
         val settings = AccountingYearSettingsEntity().apply {

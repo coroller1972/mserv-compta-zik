@@ -3,7 +3,7 @@ package fr.spiritbox.compta.resources
 import fr.spiritbox.compta.openapi.api.AccountingYearsApi
 import fr.spiritbox.compta.openapi.model.Expense
 import fr.spiritbox.compta.openapi.model.AccountingYearStatusUpdate
-import fr.spiritbox.compta.openapi.model.Settings
+import fr.spiritbox.compta.openapi.model.SettingsUpdate
 import fr.spiritbox.compta.openapi.model.TeacherInvoicePrepareRequest
 import fr.spiritbox.compta.openapi.model.TeacherInvoiceFinalizeRequest
 import fr.spiritbox.compta.services.AccountingYearService
@@ -78,9 +78,9 @@ class AccountingYearResource(
 
     override suspend fun updateSettings(
         year: Int,
-        settings: Settings
+        settingsUpdate: SettingsUpdate
     ): Response {
-        return Response.ok(accountingYearService.updateSettings(year, settings)).build()
+        return Response.ok(accountingYearService.updateSettings(year, settingsUpdate)).build()
     }
 
 

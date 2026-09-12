@@ -8,6 +8,7 @@ import fr.spiritbox.compta.repositories.IndividualCourseRepository
 import fr.spiritbox.compta.repositories.MusicianRepository
 import fr.spiritbox.compta.utils.PanacheCoroutine
 import io.smallrye.mutiny.coroutines.awaitSuspending
+import fr.spiritbox.compta.security.AuthenticatedUser
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.ws.rs.BadRequestException
 import jakarta.ws.rs.NotFoundException
@@ -19,6 +20,7 @@ class MusicianService(
     private val individualCourseRepository: IndividualCourseRepository,
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper,
+    private val authenticatedUser: AuthenticatedUser,
 ) {
     suspend fun createMusician(musician: Musician): Musician = panacheCoroutine.withTransaction {
         if (musician.id != null) {
@@ -44,6 +46,7 @@ class MusicianService(
     suspend fun listMusicians(): List<Musician> = panacheCoroutine.withSession {
         musicianRepository.find("order by lastName, firstName").list()
             .awaitSuspending()
+            .filter { authenticatedUser.can(if (it.active) "MUSICIENS_READ" else "MUSICIENS_ARCHIVED") }
             .map { mapper.run { it.toDto() } }
     }
 
