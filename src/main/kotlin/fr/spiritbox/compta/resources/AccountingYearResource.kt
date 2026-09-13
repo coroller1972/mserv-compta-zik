@@ -53,6 +53,9 @@ class AccountingYearResource(
         return Response.accepted(accountingYearService.prepareStudentInvoices(year, termId)).build()
     }
 
+    override suspend fun markStudentInvoicesSent(year: Int, termId: UUID): Response =
+        Response.ok(accountingYearService.markStudentInvoicesSent(year, termId)).build()
+
     override suspend fun finalizeStudentInvoices(year: Int, termId: UUID): Response =
         Response.ok(accountingYearService.finalizeStudentInvoices(year, termId)).build()
 

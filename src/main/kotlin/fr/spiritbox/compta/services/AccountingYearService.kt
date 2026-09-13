@@ -47,6 +47,7 @@ import fr.spiritbox.compta.repositories.TermRepository
 import fr.spiritbox.compta.repositories.TeacherInvoiceAttendanceAllocationRepository
 import fr.spiritbox.compta.repositories.TeacherBillingAdjustmentRepository
 import fr.spiritbox.compta.utils.PanacheCoroutine
+import io.quarkus.hibernate.reactive.panache.kotlin.Panache
 import io.smallrye.mutiny.coroutines.awaitSuspending
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.ws.rs.BadRequestException
@@ -558,6 +559,24 @@ class AccountingYearService(
         }
         return documents.map { mapper.run { it.toDto() } }
     }
+
+    suspend fun markStudentInvoicesSent(year: Int, termId: UUID): List<GeneratedDocument> =
+        panacheCoroutine.withTransaction {
+            val term = getTerm(year, termId)
+            lifecycleService.requireDocumentsMutable(term.settings)
+            val documents = generatedDocumentRepository
+                .listByTermAndType(termId, GeneratedDocumentType.STUDENT_INVOICE)
+                .awaitSuspending()
+                .filter { it.musician != null && it.status == GeneratedDocumentStatus.GENERATED }
+            val sentAt = java.time.Instant.now()
+            documents.forEach { document ->
+                document.status = GeneratedDocumentStatus.SENT
+                document.sentAt = sentAt
+                auditService.record("DOCUMENT", document.id, "SENT", mapOf("number" to document.documentNumber))
+            }
+            Panache.getSession().awaitSuspending().flush().awaitSuspending()
+            documents.map { mapper.run { it.toDto() } }
+        }
 
     suspend fun finalizeStudentInvoices(year: Int, termId: UUID): List<GeneratedDocument> =
         panacheCoroutine.withTransaction {

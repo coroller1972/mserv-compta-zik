@@ -310,6 +310,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GeneratedDocument'
+  /accounting-years/{year}/terms/{termId}/student-invoices/sent:
+    post:
+      tags: [Accounting years]
+      operationId: markStudentInvoicesSent
+      description: Marque en une transaction les factures individuelles élèves GENERATED du trimestre comme SENT. Les brouillons, factures déjà envoyées, annulées ou créditées et le PDF global sont ignorés. Répéter la requête ne modifie pas les dates ni l'audit des factures déjà envoyées. Permission BILLING_PRINT.
+      parameters:
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/TermId'
+      responses:
+        '200':
+          description: Factures individuelles mises à jour, avec leur date d'envoi et leur version. Liste vide si aucune facture éligible.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GeneratedDocument'
+        '403':
+          description: Permission BILLING_PRINT requise.
+        '404':
+          description: Trimestre absent de l'année demandée.
+        '409':
+          description: Année clôturée.
   /accounting-years/{year}/terms/{termId}/student-invoices/finalize:
     post:
       tags: [Accounting years]

@@ -95,7 +95,7 @@ private val endpointPermissions =
         EndpointPermission("GET", Regex("""accounting-years/\d+/terms/[^/]+/documents$"""), listOf("BILLING_READ")),
         EndpointPermission("GET", Regex("""accounting-years/\d+/terms/[^/]+/billing$"""), listOf("BILLING_READ")),
         EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/student-invoices$"""), listOf("BILLING_PRINT")),
-        EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/student-invoices/finalize$"""), listOf("BILLING_PRINT")),
+        EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/student-invoices/(finalize|sent)$"""), listOf("BILLING_PRINT")),
         EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/student-invoices/summary$"""), listOf("BILLING_PRINT")),
         EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/teacher-invoice-requests$"""), listOf("BILLING_PRINT")),
         EndpointPermission("POST", Regex("""accounting-years/\d+/terms/[^/]+/teacher-invoice-requests/finalize$"""), listOf("BILLING_PRINT")),
