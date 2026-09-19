@@ -115,11 +115,36 @@ Easily start your REST Web Services
 
 ## Validation des sessions métier
 
-Configurer `AUTH_IDENTITY_URL` avec l’URL interne du service d’identité, incluant `/api/auth` (par exemple `http://mserv-identity:8083/api/auth` dans Compose). En développement, la valeur est `http://localhost:8083/api/auth`. Le backend appelle `/session` pour chaque requête avec le Bearer de l’utilisateur ; il ne requiert plus de copie du secret JWT d’identité. Compose et le manifeste OpenShift contiennent cette configuration.
+Pour la pile complète, voir [la configuration ES256](../docs/es256-configuration.md) et [le `.env.example` à la racine](../.env.example). Le fichier de déploiement de ce service s'appelle `deploy.yml` ; les variables de signature et les fichiers de clés sont réservés à Identity.
 
-Le client est réactif, sans cache ni redirection, avec des délais de connexion et lecture de 2 et 3 secondes. Une session révoquée ou un compte désactivé est refusé ; changement de mot de passe et enrôlement MFA obligatoires bloquent les accès métier. Une identité indisponible produit un 503. Le service d’identité doit donc être joignable avant d’utiliser l’API métier.
+Le backend vérifie la signature **ES256** des JWT avec SmallRye JWT et les clés publiques publiées par Identity sur `GET /api/auth/.well-known/jwks.json`. Il contrôle `kid`, `typ=JWT`, l’émetteur, l’audience, l’expiration et les dates `iat`/`nbf`, et exige les claims du contrat Identity (`iss`, `sub`, `aud`, `exp`, `iat`, `nbf`, `jti`, `sid`, `av`, `roles`, `permissions`). Il refuse HS256 et les tokens non signés, sans tolérance d’expiration. Aucun secret JWT ni clé privée n’est nécessaire dans ce service.
 
-Les tests `BusinessAuthorizationTest` exercent les endpoints avec PostgreSQL et un serveur HTTP d’identité simulé ; `BusinessSessionGateTest` dans le dépôt identité valide le contrat réel `/session` avec MFA obligatoire.
+| Variable | Valeur attendue |
+| --- | --- |
+| `AUTH_IDENTITY_URL` | URL de confiance incluant `/api/auth`, par exemple `http://mserv-identity:8083/api/auth` dans Compose. Utiliser HTTPS hors d’un réseau interne protégé. |
+| `AUTH_JWT_ISSUER` | Exactement l’émetteur configuré dans Identity. Obligatoire en production. |
+| `AUTH_JWT_AUDIENCE` | Exactement l’audience configurée dans Identity. Obligatoire en production. |
+
+En développement, les valeurs par défaut sont `http://localhost:8083/api/auth`, `identity-auth` et `identity-api`. Les deux dernières peuvent être surchargées par les variables d’environnement. Voir [`.env.example`](.env.example). Compose transmet les variables et OpenShift utilise le même émetteur que le Secret `mserv-identity-jwt`, avec l’audience `identity-api` du manifeste Identity ; adapter les deux déploiements ensemble si nécessaire.
+
+Le téléchargement JWKS utilise le client HTTP réactif, sans redirection ni URL issue du JWT (`jku`, `x5u`, clés embarquées, etc.). Seules des clés publiques EC P-256, identifiées par un `kid` unique et déclarées `alg=ES256`/`use=sig`, sont acceptées. Les clés sont mises en cache pendant 300 secondes ; un `kid` inconnu déclenche un rafraîchissement, limité à une tentative toutes les 30 secondes. Les requêtes concurrentes partagent le téléchargement en cours. Un JWKS indisponible ou invalide lors d’un chargement obligatoire produit un 503, sans réutiliser un cache expiré.
+
+Après validation cryptographique, le backend appelle `/session` pour chaque requête avec le Bearer de l’utilisateur et vérifie que l’utilisateur retourné correspond au `sub` signé. Les rôles et permissions utilisés restent ceux de cette réponse à jour, sans cache de session.
+
+Les appels Identity utilisent des délais de connexion et lecture de 2 et 3 secondes. Une session révoquée ou un compte désactivé est refusé ; changement de mot de passe et enrôlement MFA obligatoires bloquent les accès métier. Une identité indisponible produit un 503. Le service d’identité doit donc être joignable avant d’utiliser l’API métier.
+
+Avant de déployer cette version, utiliser Identity avec sa migration ES256, publier le JWKS et basculer son émission en ES256. La configuration Compose monte ses clés publiques et privées uniquement dans Identity. Les anciens access tokens HS256 sont refusés ; les utilisateurs peuvent obtenir un token ES256 via leur refresh ou une reconnexion. Ne pas distribuer la clé privée d’Identity à Compta.
+
+Pour une rotation, publier d’abord l’ancienne et la nouvelle clé publique sur toutes les instances Identity, attendre au moins 300 secondes, puis changer la clé de signature. Conserver l’ancienne clé publique jusqu’à expiration des tokens précédents. Après un redémarrage d’Identity en mode dev avec des clés éphémères, un token portant le nouveau `kid` déclenche le rafraîchissement (sous réserve de la limite de 30 secondes).
+
+`IdentityJwtVerifierTest` vérifie les signatures, les claims, le refus de HS256, les clés invalides, la rotation et les téléchargements concurrents. `BusinessAuthorizationTest` exerce les endpoints avec PostgreSQL et un serveur HTTP d’identité simulé émettant de vrais JWT ES256 ; il contrôle aussi les révocations, les changements de permissions, le refus local avant `/session` et la cohérence de l’utilisateur retourné. Les parcours Identity sont couverts par `AuthResourceTest` et `JwtKeysResourceTest` dans son dépôt.
+
+```sh
+./gradlew test --tests '*IdentityJwtVerifierTest' --tests '*BusinessAuthorizationTest'
+./gradlew build
+```
+
+Le parseur est utilisé explicitement afin de conserver le filtre métier et ses erreurs `application/problem+json`, conformément à la prise en charge de [SmallRye JWT sans mécanisme HTTP automatique](https://quarkus.io/guides/security-jwt/#how-to-add-smallrye-jwt-directly).
 
 ## Sauvegardes complètes
 

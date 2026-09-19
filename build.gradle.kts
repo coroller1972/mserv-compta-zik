@@ -20,6 +20,8 @@ dependencies {
     implementation("io.quarkus:quarkus-smallrye-openapi")
     implementation("io.quarkus:quarkus-rest-jackson")
     implementation("io.quarkus:quarkus-rest-client-jackson")
+    // Explicit JWT verification preserves the session gate and its problem+json errors.
+    implementation("io.smallrye:smallrye-jwt")
     implementation("io.quarkus:quarkus-rest-kotlin")
     implementation("io.quarkus:quarkus-kotlin")
     implementation("io.smallrye.reactive:mutiny-kotlin")

@@ -10,10 +10,16 @@ import jakarta.ws.rs.core.Response
 import org.eclipse.microprofile.rest.client.inject.RegisterRestClient
 
 /** Uses the identity service's existing session gate, including password and MFA requirements. */
-@Path("/session")
+@Path("/")
 @RegisterRestClient(configKey = "identity")
 interface IdentitySessionClient {
     @GET
+    @Path("/session")
     @Produces(MediaType.APPLICATION_JSON)
     fun session(@HeaderParam("Authorization") authorization: String): Uni<Response>
+
+    @GET
+    @Path("/.well-known/jwks.json")
+    @Produces(MediaType.APPLICATION_JSON)
+    fun publicKeys(): Uni<Response>
 }

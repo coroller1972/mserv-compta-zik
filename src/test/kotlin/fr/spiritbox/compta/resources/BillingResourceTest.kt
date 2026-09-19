@@ -1,5 +1,6 @@
 package fr.spiritbox.compta.resources
 
+import fr.spiritbox.compta.security.IdentityStub
 import io.quarkus.test.junit.QuarkusTest
 import io.restassured.RestAssured.given
 import io.agroal.api.AgroalDataSource
@@ -16,11 +17,6 @@ import org.hamcrest.Matchers.hasItems
 import org.hamcrest.Matchers.hasSize
 import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.Test
-import java.nio.charset.StandardCharsets
-import java.time.Instant
-import java.util.Base64
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 @QuarkusTest
 @io.quarkus.test.common.QuarkusTestResource(fr.spiritbox.compta.security.IdentityStub::class)
@@ -640,25 +636,9 @@ class BillingResourceTest {
             .body("individualCourses.year", everyItem(equalTo(2026)))
     }
 
-    private fun administratorToken(): String {
-        val header = base64Url("""{"alg":"HS256","typ":"JWT"}""")
-        val payload = base64Url(
-            """{"iss":"demo-mpme-auth","sub":"billing-test","exp":${Instant.now().plusSeconds(300).epochSecond},"roles":["ADMINISTRATOR"],"permissions":[]}""",
-        )
-        val unsigned = "$header.$payload"
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(TEST_SECRET.toByteArray(StandardCharsets.UTF_8), "HmacSHA256"))
-        val signature = Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(mac.doFinal(unsigned.toByteArray(StandardCharsets.UTF_8)))
-        return "$unsigned.$signature"
-    }
-
-    private fun base64Url(value: String): String = Base64.getUrlEncoder().withoutPadding()
-        .encodeToString(value.toByteArray(StandardCharsets.UTF_8))
+    private fun administratorToken(): String = IdentityStub.token(admin = true, subject = "billing-test")
 
     private companion object {
-        const val TEST_SECRET = "compta-zik-test-secret-with-at-least-32-characters"
-
         val referenceDataTransfer = """
             {
               "formatVersion": 2,

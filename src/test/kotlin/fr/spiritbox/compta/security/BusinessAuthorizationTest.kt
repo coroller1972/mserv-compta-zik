@@ -21,6 +21,28 @@ class BusinessAuthorizationTest {
     fun resetIdentity() {
         IdentityStub.failures.clear()
         IdentityStub.livePermissions.clear()
+        IdentityStub.sessionSubjects.clear()
+    }
+
+    @Test
+    fun `invalid JWT is rejected locally before calling identity session`() {
+        val calls = IdentityStub.sessionCalls.get()
+        for (token in listOf(
+            TestJwt.token(mapOf("aud" to "another-api")),
+            TestJwt.token(mapOf("iss" to "another-issuer")),
+            TestJwt.token(key = TestJwt.newKey().apply { keyId = TestJwt.signingKey.keyId }),
+        )) {
+            request(token).get("/teachers").then().statusCode(401).body("code", equalTo("TOKEN_EXPIRED"))
+        }
+        assertEquals(calls, IdentityStub.sessionCalls.get())
+    }
+
+    @Test
+    fun `session user must match the signed subject and bearer scheme is case insensitive`() {
+        IdentityStub.sessionSubjects["mismatched"] = "someone-else"
+        request(IdentityStub.token(admin = true, subject = "mismatched")).get("/teachers")
+            .then().statusCode(503).body("code", equalTo("IDENTITY_UNAVAILABLE"))
+        given().header("Authorization", "bearer $admin").get("/teachers").then().statusCode(200)
     }
 
     @Test

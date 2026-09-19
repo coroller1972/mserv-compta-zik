@@ -52,8 +52,18 @@ spec:
               value: "GET,POST,PUT,DELETE,OPTIONS"
             - name: QUARKUS_HTTP_CORS_HEADERS
               value: "Content-Type,Authorization"
+            # ES256 : clés publiques via AUTH_IDENTITY_URL + /.well-known/jwks.json.
+            # AUTH_JWT_SIGNING_* et le montage des clés restent dans Identity/deploy.yml.
             - name: AUTH_IDENTITY_URL
               value: "http://mserv-identity-svc:8083/api/auth"
+            - name: AUTH_JWT_ISSUER
+              valueFrom:
+                secretKeyRef:
+                  name: mserv-identity-jwt
+                  key: issuer
+            - name: AUTH_JWT_AUDIENCE
+              # Must match AUTH_JWT_AUDIENCE in the Identity deployment.
+              value: "identity-api"
           volumeMounts:
             - name: documents
               mountPath: /documents

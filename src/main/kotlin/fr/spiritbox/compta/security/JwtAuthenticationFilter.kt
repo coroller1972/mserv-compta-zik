@@ -15,6 +15,7 @@ import java.util.UUID
 @ApplicationScoped
 class JwtAuthenticationFilter(
     @RestClient private val identity: IdentitySessionClient,
+    private val jwt: IdentityJwtVerifier,
     private val authenticatedUser: AuthenticatedUser,
 ) {
     @ServerRequestFilter(priority = Priorities.AUTHENTICATION, nonBlocking = true)
@@ -24,10 +25,17 @@ class JwtAuthenticationFilter(
             return Uni.createFrom().nullItem()
         }
         val authorization = request.getHeaderString(HttpHeaders.AUTHORIZATION)
-        if (authorization == null || !authorization.startsWith("Bearer ") || authorization.removePrefix("Bearer ").isBlank()) {
+        if (authorization == null || !authorization.startsWith("Bearer ", ignoreCase = true) || authorization.substring(7).isBlank()) {
             return Uni.createFrom().item(problem(401, "TOKEN_EXPIRED"))
         }
-        return identity.session(authorization).map<Response?> { response ->
+        return jwt.subject(authorization.substring(7)).chain { subject ->
+            if (subject == null) Uni.createFrom().item(problem(401, "TOKEN_EXPIRED"))
+            else validateSession("Bearer ${authorization.substring(7)}", subject, request.method, path)
+        }.onFailure().recoverWithItem { _: Throwable -> problem(503, "IDENTITY_UNAVAILABLE") }
+    }
+
+    private fun validateSession(authorization: String, subject: String, method: String, path: String): Uni<Response?> =
+        identity.session(authorization).map<Response?> { response ->
             response.use {
                 if (it.status != 200) {
                     val status = it.status.takeIf { value -> value == 401 || value == 403 } ?: 503
@@ -41,18 +49,17 @@ class JwtAuthenticationFilter(
                 val session = it.readEntity(JsonNode::class.java)
                 val user = session.path("user")
                 val id = user.path("id").asText()
-                if (id.isBlank() || !session.path("roles").isArray || !session.path("permissions").isArray) {
+                if (id != subject || !session.path("roles").isArray || !session.path("permissions").isArray) {
                     return@map problem(503, "IDENTITY_UNAVAILABLE")
                 }
                 authenticatedUser.userId = id
                 authenticatedUser.displayName = user.path("displayName").asText(id)
                 authenticatedUser.roles = session.path("roles").map { role -> role.asText() }.toSet()
                 authenticatedUser.permissions = session.path("permissions").map { permission -> permission.asText() }.toSet()
-                val required = endpointPermissions.firstOrNull { permission -> permission.matches(request.method, path) }
+                val required = endpointPermissions.firstOrNull { permission -> permission.matches(method, path) }
                 if (required == null || !required.isAllowed(authenticatedUser)) problem(403, "FORBIDDEN") else null
             }
-        }.onFailure().recoverWithItem { _: Throwable -> problem(503, "IDENTITY_UNAVAILABLE") }
-    }
+        }
 
     private fun problem(status: Int, code: String): Response = Response.status(status)
         .type("application/problem+json")
