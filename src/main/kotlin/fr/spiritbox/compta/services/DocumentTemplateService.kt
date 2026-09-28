@@ -5,6 +5,20 @@ import fr.spiritbox.compta.domain.TeacherEntity
 import fr.spiritbox.compta.domain.TermEntity
 import fr.spiritbox.compta.openapi.model.StudentInvoiceDraft
 import fr.spiritbox.compta.openapi.model.TeacherInvoiceRequestDraft
+import fr.spiritbox.compta.services.PdfTheme.BRASS
+import fr.spiritbox.compta.services.PdfTheme.BRASS_TINT
+import fr.spiritbox.compta.services.PdfTheme.BRASS_TINT_INK
+import fr.spiritbox.compta.services.PdfTheme.CARD_ALT
+import fr.spiritbox.compta.services.PdfTheme.FONT_DISPLAY
+import fr.spiritbox.compta.services.PdfTheme.FONT_MONO
+import fr.spiritbox.compta.services.PdfTheme.FONT_UI
+import fr.spiritbox.compta.services.PdfTheme.INK
+import fr.spiritbox.compta.services.PdfTheme.INK_FAINT
+import fr.spiritbox.compta.services.PdfTheme.INK_MUTED
+import fr.spiritbox.compta.services.PdfTheme.INK_SOFT
+import fr.spiritbox.compta.services.PdfTheme.LINE
+import fr.spiritbox.compta.services.PdfTheme.LINE_STRONG
+import fr.spiritbox.compta.services.PdfTheme.WORDMARK_ACCENT
 import jakarta.enterprise.context.ApplicationScoped
 import java.math.BigDecimal
 import java.text.NumberFormat
@@ -15,11 +29,12 @@ import java.util.*
 class DocumentTemplateService {
     private val moneyFormatter = NumberFormat.getCurrencyInstance(Locale.FRANCE)
     private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
-    private val logoDataUri by lazy {
-        val bytes = checkNotNull(javaClass.getResourceAsStream("/pdf-assets/compta-zik-logo.jpg")) {
-            "PDF logo resource is missing."
+    private val hoursFormatter = NumberFormat.getNumberInstance(Locale.FRANCE).apply { maximumFractionDigits = 2 }
+    private val markDataUri by lazy {
+        val bytes = checkNotNull(javaClass.getResourceAsStream("/pdf-assets/compta-zik-mark.png")) {
+            "PDF logo mark resource is missing."
         }.use { it.readBytes() }
-        "data:image/jpeg;base64,${Base64.getEncoder().encodeToString(bytes)}"
+        "data:image/png;base64,${Base64.getEncoder().encodeToString(bytes)}"
     }
 
     fun creditNote(documentNumber: String, originalNumber: String, reason: String, total: BigDecimal) = page(
@@ -49,16 +64,16 @@ class DocumentTemplateService {
     ) = page(
         title = "Facture élève",
         documentNumber = documentNumber,
-        subtitle = "${term.name} $year",
-        recipientLabel = "Eleve",
+        subtitle = "${term.name} · $year",
+        recipientLabel = "Élève",
         recipient = musician.fullName(),
         total = draft.totalAmount,
         body = """
             <table>
               <thead>
                 <tr>
-                  <th>Designation</th>
-                  <th class="num">Quantite</th>
+                  <th>Désignation</th>
+                  <th class="num">Quantité</th>
                   <th class="num">Montant</th>
                 </tr>
               </thead>
@@ -90,8 +105,8 @@ class DocumentTemplateService {
     ) = page(
         title = "Synthèse factures élèves",
         documentNumber = documentNumber,
-        subtitle = "${term.name} $year",
-        recipientLabel = "Periode",
+        subtitle = "${term.name} · $year",
+        recipientLabel = "Période",
         recipient = "${term.name} $year",
         total = total,
         body = """
@@ -99,7 +114,7 @@ class DocumentTemplateService {
             <table>
               <thead>
                 <tr>
-                  <th>Eleve</th>
+                  <th>Élève</th>
                   <th class="num">Cours</th>
                   <th class="num">Montant cours</th>
                   <th class="num">Cotisation</th>
@@ -140,7 +155,7 @@ class DocumentTemplateService {
         title = "Demande de facture",
         documentNumber = documentNumber,
         subtitle = buildString {
-            append("${term.name} $year")
+            append("${term.name} · $year")
             if (installmentNumber != null) append(" · Situation n°$installmentNumber")
             if (periodStartWeek != null && periodEndWeek != null) append(" · Semaines $periodStartWeek à $periodEndWeek")
         },
@@ -162,9 +177,9 @@ class DocumentTemplateService {
             draft.weeklyLines.joinToString("\n") { line ->
                 """
                     <tr>
-                      <td>S${line.week}</td>
-                      <td>${line.date.format(dateFormatter).escapeHtml()}</td>
-                      <td class="num">${line.hours}</td>
+                      <td class="mono">S${line.week}</td>
+                      <td class="mono">${line.date.format(dateFormatter).escapeHtml()}</td>
+                      <td class="num">${hours(line.hours)}</td>
                       <td class="num">${money(line.amount)}</td>
                     </tr>
                     """.trimIndent()
@@ -178,7 +193,7 @@ class DocumentTemplateService {
                   <table>
                     <thead><tr><th>Document d'origine</th><th>Motif</th><th class="num">Montant</th></tr></thead>
                     <tbody>${draft.adjustments.orEmpty().joinToString("\n") { adjustment -> """
-                      <tr><td>${(adjustment.sourceDocumentNumber ?: adjustment.sourceDocumentId.toString()).escapeHtml()}</td><td>${adjustment.reason.escapeHtml()}</td><td class="num">${money(adjustment.amount)}</td></tr>
+                      <tr><td class="mono">${(adjustment.sourceDocumentNumber ?: adjustment.sourceDocumentId.toString()).escapeHtml()}</td><td>${adjustment.reason.escapeHtml()}</td><td class="num">${money(adjustment.amount)}</td></tr>
                     """.trimIndent() }}</tbody>
                   </table>
                 """.trimIndent()
@@ -187,6 +202,7 @@ class DocumentTemplateService {
         isDraft = isDraft,
     )
 
+    /** Gabarit commun — DA « Partition » (compta-zik-frontend/docs/design/partition.md), toujours en clair. */
     private fun page(
         title: String,
         documentNumber: String,
@@ -201,82 +217,106 @@ class DocumentTemplateService {
           <head>
             <meta charset="utf-8" />
             <style>
-              @page { size: A4; margin: 16mm 16mm 18mm; }
+              @page {
+                size: A4;
+                margin: 16mm 16mm 20mm;
+                @bottom-left {
+                  content: "Compta Zik · document généré automatiquement par la section musique";
+                  color: $INK_MUTED; font-family: '$FONT_MONO'; font-size: 7.5px; vertical-align: top; padding-top: 6mm;
+                }
+                @bottom-right {
+                  content: "Page " counter(page) " / " counter(pages);
+                  color: $INK_MUTED; font-family: '$FONT_MONO'; font-size: 7.5px; vertical-align: top; padding-top: 6mm;
+                }
+              }
               * { box-sizing: border-box; }
               html, body { background: #ffffff; }
-              body { color: #172027; font-family: Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.5; }
-              .header { background: #09151b; border-bottom: 5px solid #f2ae31; color: #ffffff; margin-bottom: 22px; padding: 17px 19px; }
-              .header-layout { display: table; width: 100%; }
-              .logo-cell { display: table-cell; vertical-align: middle; width: 64px; }
-              .logo { background: #fffefa; border: 1px solid rgba(255, 255, 255, .18); border-radius: 7px; display: block; height: 52px; width: 52px; }
-              .title-cell { display: table-cell; padding-left: 14px; vertical-align: middle; }
-              .brand { color: #72d0b8; font-size: 9px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
-              h1 { color: #ffffff; font-size: 25px; font-weight: 700; letter-spacing: -.025em; line-height: 1.1; margin: 5px 0 3px; }
-              .subtitle { color: #bdc9cc; font-size: 11px; }
-              .document-chip { color: #f2ae31; display: table-cell; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-align: right; text-transform: uppercase; vertical-align: top; white-space: nowrap; }
-              .meta { border-collapse: separate; border-spacing: 8px 0; display: table; margin: 0 -8px 24px; width: calc(100% + 16px); }
-              .meta-card { background: #f3f1ec; border-left: 3px solid #176b5d; display: table-cell; padding: 13px 14px; width: 50%; }
-              .meta-card + .meta-card { border-left-color: #f2ae31; }
-              .label { color: #69747d; display: block; font-size: 8px; font-weight: 700; letter-spacing: .1em; margin-bottom: 5px; text-transform: uppercase; }
-              .value { color: #172027; font-size: 12px; font-weight: 700; }
-              .notice { background: #fff8e8; border-left: 3px solid #f2ae31; color: #654c19; margin: 0 0 14px; padding: 9px 11px; }
-              .message-card { background: #f3f1ec; border-left: 3px solid #f2ae31; margin: 10px 0 18px; padding: 15px; }
-              .message-card strong { color: #172027; display: block; font-size: 13px; }
-              .message-card p { color: #69747d; margin: 7px 0 0; }
-              table { -fs-table-paginate: paginate; border-collapse: separate; border-spacing: 0; margin-top: 10px; width: 100%; }
+              body { color: $INK; font-family: '$FONT_UI'; font-size: 11px; line-height: 1.5; margin: 0; }
+              .masthead { border-bottom: 1px solid $LINE; display: table; margin-bottom: 22px; padding-bottom: 14px; width: 100%; }
+              .brand-cell, .doc-cell { display: table-cell; vertical-align: middle; }
+              .mark { border-radius: 8px; display: inline-block; height: 30px; margin-right: 9px; vertical-align: middle; width: 30px; }
+              .wordmark { color: $INK; font-family: '$FONT_DISPLAY'; font-size: 22px; line-height: 1; vertical-align: middle; }
+              .wordmark em { color: $WORDMARK_ACCENT; font-style: italic; }
+              .doc-cell { text-align: right; }
+              .eyebrow { color: $INK_MUTED; display: block; font-family: '$FONT_MONO'; font-size: 9px; }
+              .doc-number { color: $INK; display: block; font-family: '$FONT_MONO'; font-size: 12px; font-weight: 500; margin-top: 2px; }
+              .title-block { margin-bottom: 18px; }
+              h1 { color: $INK; font-family: '$FONT_DISPLAY'; font-size: 38px; font-weight: 400; line-height: 1; margin: 4px 0 0; }
+              h2 { color: $INK; font-size: 13px; font-weight: 700; margin: 22px 0 0; }
+              .draft-banner { background: $BRASS_TINT; border: 1.5px dashed $BRASS; border-radius: 10px; color: $BRASS_TINT_INK; font-size: 9px; font-weight: 700; letter-spacing: .12em; margin: 0 0 18px; padding: 8px 12px; text-align: center; text-transform: uppercase; }
+              .meta { display: table; margin-bottom: 22px; table-layout: fixed; width: 100%; }
+              .meta-cell { display: table-cell; vertical-align: top; width: 50%; }
+              .meta-gap { display: table-cell; width: 12px; }
+              .meta-card { background: $CARD_ALT; border: 1px solid $LINE; border-radius: 12px; padding: 12px 14px; }
+              .label { color: $INK_FAINT; display: block; font-size: 8px; font-weight: 700; letter-spacing: .08em; margin-bottom: 4px; text-transform: uppercase; }
+              .value { color: $INK; font-size: 13px; font-weight: 700; }
+              .meta-card.document .value { font-family: '$FONT_MONO'; font-weight: 500; }
+              .notice { background: $BRASS_TINT; border-radius: 10px; color: $BRASS_TINT_INK; margin: 0 0 14px; padding: 9px 12px; }
+              .message-card { background: $CARD_ALT; border: 1px solid $LINE; border-radius: 12px; margin: 4px 0 18px; padding: 14px 16px; }
+              .message-card strong { color: $INK; display: block; font-size: 13px; }
+              .message-card p { color: $INK_MUTED; margin: 6px 0 0; }
+              table { -fs-table-paginate: paginate; border-collapse: collapse; margin-top: 8px; width: 100%; }
               thead { display: table-header-group; }
               tbody { display: table-row-group; }
               tr { break-inside: avoid; page-break-inside: avoid; }
-              th { background: #123f49; border-top: 3px solid #f2ae31; color: #ffffff; font-size: 8px; letter-spacing: .06em; padding: 9px 10px; text-align: left; text-transform: uppercase; }
-              td { border-bottom: 1px solid #dfe3e1; padding: 9px 10px; }
-              tr:nth-child(even) td { background: #f8f7f3; }
-              .num { text-align: right; }
-              .total { background: #09151b; border-top: 4px solid #f2ae31; margin-top: 22px; padding: 14px 17px; text-align: right; }
-              .total span { color: #aeb9bd; display: block; font-size: 8px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
-              .total strong { color: #72d0b8; font-size: 23px; font-weight: 700; }
-              .footer { border-top: 1px solid #dfe3e1; color: #879196; display: table; font-size: 8px; margin-top: 19px; padding-top: 8px; width: 100%; }
-              .footer-brand { color: #176b5d; display: table-cell; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-              .footer-copy { display: table-cell; text-align: right; }
-              .draft-banner { background: #fff8e8; border: 1px solid #f2ae31; color: #8a5b08; font-size: 10px; font-weight: 700; letter-spacing: .11em; margin: -10px 0 18px; padding: 7px 10px; text-align: center; }
+              th { border-bottom: 1px solid $LINE_STRONG; color: $INK_FAINT; font-size: 8px; font-weight: 700; letter-spacing: .08em; padding: 8px 10px; text-align: left; text-transform: uppercase; }
+              td { border-bottom: 1px solid $LINE; color: $INK; padding: 9px 10px; }
+              .num { text-align: right; white-space: nowrap; }
+              .mono { color: $INK_SOFT; font-family: '$FONT_MONO'; font-size: 10px; }
+              .total { background: $CARD_ALT; border: 1px solid $LINE; border-radius: 12px; margin-top: 22px; padding: 12px 18px; }
+              .total-layout { display: table; width: 100%; }
+              .total-label, .total-amount { display: table-cell; vertical-align: middle; }
+              .total-label { color: $INK_FAINT; font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+              .total-amount { color: $INK; font-family: '$FONT_DISPLAY'; font-size: 32px; line-height: 1; text-align: right; }
             </style>
           </head>
           <body>
-            <section class="header">
-              <div class="header-layout">
-                <div class="logo-cell"><img class="logo" src="$logoDataUri" alt="Compta Zik" /></div>
-                <div class="title-cell">
-                  <div class="brand">Compta Zik · Section musique</div>
-                  <h1>${title.escapeHtml()}</h1>
-                  <div class="subtitle">${subtitle.escapeHtml()}</div>
-                </div>
-                <div class="document-chip">Document comptable</div>
+            <section class="masthead">
+              <div class="brand-cell">
+                <img class="mark" src="$markDataUri" alt="" />
+                <span class="wordmark">Compta <em>Zik</em></span>
+              </div>
+              <div class="doc-cell">
+                <span class="eyebrow">Document comptable</span>
+                <span class="doc-number">${documentNumber.escapeHtml()}</span>
               </div>
             </section>
-            ${if (isDraft) "<div class=\"draft-banner\">BROUILLON - NON VALIDÉ</div>" else ""}
+            <section class="title-block">
+              <span class="eyebrow">${subtitle.escapeHtml()}</span>
+              <h1>${title.escapeHtml()}</h1>
+            </section>
+            ${if (isDraft) "<div class=\"draft-banner\">Brouillon · non validé</div>" else ""}
             <section class="meta">
-              <div class="meta-card">
-                <span class="label">Document</span>
-                <span class="value">${documentNumber.escapeHtml()}</span>
+              <div class="meta-cell">
+                <div class="meta-card document">
+                  <span class="label">Document</span>
+                  <span class="value">${documentNumber.escapeHtml()}</span>
+                </div>
               </div>
-              <div class="meta-card">
-                <span class="label">${recipientLabel.escapeHtml()}</span>
-                <span class="value">${recipient.escapeHtml()}</span>
+              <div class="meta-gap"></div>
+              <div class="meta-cell">
+                <div class="meta-card">
+                  <span class="label">${recipientLabel.escapeHtml()}</span>
+                  <span class="value">${recipient.escapeHtml()}</span>
+                </div>
               </div>
             </section>
             $body
             <section class="total">
-              <span>Total</span>
-              <strong>${money(total)}</strong>
-            </section>
-            <section class="footer">
-              <span class="footer-brand">Compta Zik</span>
-              <span class="footer-copy">Document généré automatiquement par la section musique.</span>
+              <div class="total-layout">
+                <span class="total-label">Total</span>
+                <span class="total-amount">${money(total)}</span>
+              </div>
             </section>
           </body>
         </html>
     """.trimIndent()
 
-    private fun money(value: BigDecimal) = moneyFormatter.format(value)
+    // Les polices embarquées n'ont pas l'espace fine insécable (U+202F) que Java place entre les milliers :
+    // on la remplace par une espace insécable ordinaire, présente partout.
+    private fun money(value: BigDecimal) = moneyFormatter.format(value).replace('\u202F', '\u00A0')
+
+    private fun hours(value: BigDecimal) = "${hoursFormatter.format(value).replace('\u202F', '\u00A0')}\u00A0h"
 
     private fun MusicianEntity.fullName() = "$firstName $lastName".trim()
 
