@@ -41,30 +41,39 @@ class ScheduleResourceTest {
         course(firstMusician, "17:00").statusCode(201)
 
         band("Groupe trop tôt", "INDEPENDENT", "16:30").statusCode(400).body(containsString("overlaps"))
-        band("Groupe du mardi", "INDEPENDENT", "17:30").statusCode(201).body("startTime", equalTo("17:30"))
+        band("Groupe du mardi", "INDEPENDENT", "17:30").statusCode(201)
+            .body("startTime", equalTo("17:30")).body("durationMinutes", equalTo(90))
         band("Atelier trop tard", "WORKSHOP", "19:00").statusCode(400).body(containsString("ends after 20:00"))
         band("Atelier sur le groupe", "WORKSHOP", "18:30").statusCode(400).body(containsString("Groupe du mardi"))
-        band("Atelier hors grille", "WORKSHOP", "17:15").statusCode(400)
+        band("Atelier hors grille", "WORKSHOP", "17:20").statusCode(400)
         band("Groupe à placer", "INDEPENDENT", null).statusCode(201).body("startTime", nullValue())
 
         course(secondMusician, "18:00").statusCode(400).body(containsString("Groupe du mardi"))
         course(secondMusician, "17:00", sharedSlot = true).statusCode(201)
 
+        // Durée choisie groupe par groupe : deux groupes de 1h15 tiennent sur la plage de midi.
+        band("Groupe court", "INDEPENDENT", "11:30", weekday = "Jeudi", durationMinutes = 75).statusCode(201).body("durationMinutes", equalTo(75))
+        band("Groupe à la suite", "INDEPENDENT", "12:45", weekday = "Jeudi", durationMinutes = 75).statusCode(201)
+        band("Groupe trop long", "INDEPENDENT", "12:45", weekday = "Vendredi", durationMinutes = 90).statusCode(400).body(containsString("ends after 14:00"))
+        band("Groupe d'une heure", "INDEPENDENT", "16:30", weekday = "Vendredi", durationMinutes = 60).statusCode(400)
+
+        band("Atelier du jeudi", "WORKSHOP", "16:30", weekday = "Jeudi").statusCode(201).body("durationMinutes", nullValue())
+        band("Groupe du soir", "INDEPENDENT", "17:45", weekday = "Jeudi").statusCode(201)
+
         val settings = given().header("Authorization", "Bearer $token").get("/accounting-years/$year/snapshot")
             .then().statusCode(200)
-            .body("settings.groupHours", equalTo(1.5f))
             .body("bands.startTime", hasItem("17:30"))
             .extract().path<Any>("settings.version").toString()
 
-        // Un groupe de 3 h (17:30-20:30) ne tiendrait plus dans la plage du soir.
+        // Un atelier de 1h30 (16:30-18:00) chevaucherait le groupe de 17:45.
         given().header("Authorization", "Bearer $token").contentType("application/json")
-            .body("""{"year":$year,"version":$settings,"groupHours":3.00}""")
+            .body("""{"year":$year,"version":$settings,"workshopHours":1.50}""")
             .put("/accounting-years/$year/settings")
             .then().statusCode(409).body(containsString("do not fit"))
         given().header("Authorization", "Bearer $token").contentType("application/json")
-            .body("""{"year":$year,"version":$settings,"groupHours":2.50}""")
+            .body("""{"year":$year,"version":$settings,"workshopHours":1.00}""")
             .put("/accounting-years/$year/settings")
-            .then().statusCode(200).body("groupHours", equalTo(2.5f))
+            .then().statusCode(200).body("workshopHours", equalTo(1.0f))
     }
 
     private fun course(musician: UUID, startTime: String, sharedSlot: Boolean = false): ValidatableResponse =
@@ -76,11 +85,17 @@ class ScheduleResourceTest {
             .post("/individual-courses")
             .then()
 
-    private fun band(name: String, type: String, startTime: String?): ValidatableResponse =
+    private fun band(
+        name: String,
+        type: String,
+        startTime: String?,
+        weekday: String = "Mardi",
+        durationMinutes: Int? = null,
+    ): ValidatableResponse =
         given().header("Authorization", "Bearer $token").contentType("application/json")
             .body(
-                """{"year":$year,"name":"$name","type":"$type","teacherId":"$teacher","weekday":"Mardi",
-                   "startTime":${startTime?.let { "\"$it\"" } ?: "null"},"memberIds":[]}""",
+                """{"year":$year,"name":"$name","type":"$type","teacherId":"$teacher","weekday":"$weekday",
+                   "startTime":${startTime?.let { "\"$it\"" } ?: "null"},"durationMinutes":${durationMinutes ?: "null"},"memberIds":[]}""",
             )
             .post("/bands")
             .then()

@@ -61,6 +61,7 @@ class BandService(
             teacher = band.teacherId?.let { getTeacher(it) }
             weekday = band.weekday
             this.startTime = startTime
+            durationMinutes = requireDuration(band)
         }
         bandRepository.persist(entity).awaitSuspending()
         replaceMembers(entity, band.memberIds)
@@ -101,6 +102,7 @@ class BandService(
         entity.teacher = band.teacherId?.let { getTeacher(it) }
         entity.weekday = band.weekday
         entity.startTime = startTime
+        entity.durationMinutes = requireDuration(band)
         replaceMembers(entity, band.memberIds)
 
         mapper.run { getBand(id).toDto() }
@@ -112,9 +114,17 @@ class BandService(
         val weekday = band.weekday ?: throw BadRequestException("A band start time requires a weekday.")
         scheduleService.requireAvailable(
             settings,
-            scheduleService.bandOccupation(settings, id, band.name, BandType.valueOf(band.type.name), weekday, startTime),
+            scheduleService.bandOccupation(settings, id, band.name, BandType.valueOf(band.type.name), weekday, startTime, requireDuration(band)),
         )
         return startTime
+    }
+
+    /** 75 ou 90 minutes pour un groupe (90 par défaut) ; null pour un atelier. */
+    private fun requireDuration(band: Band): Int? {
+        if (band.type.name == BandType.WORKSHOP.name) return null
+        val minutes = band.durationMinutes ?: DEFAULT_GROUP_MINUTES
+        if (minutes !in SlotRules.GROUP_DURATIONS) throw BadRequestException("A group lasts 75 or 90 minutes.")
+        return minutes
     }
 
     private suspend fun getTeacher(id: UUID): TeacherEntity =

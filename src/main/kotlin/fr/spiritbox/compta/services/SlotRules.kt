@@ -16,7 +16,10 @@ object SlotRules {
         LocalTime.of(11, 30)..LocalTime.of(14, 0),
         LocalTime.of(16, 30)..LocalTime.of(20, 0),
     )
-    const val STEP_MINUTES = 30
+    const val STEP_MINUTES = 15
+
+    /** Durées possibles d'un groupe (les ateliers suivent workshopHours). */
+    val GROUP_DURATIONS = setOf(75, 90)
 
     enum class Kind { COURSE, WORKSHOP, GROUP }
 

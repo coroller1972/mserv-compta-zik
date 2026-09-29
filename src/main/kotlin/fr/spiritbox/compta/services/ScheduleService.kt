@@ -32,15 +32,22 @@ class ScheduleService(
         sharedSlot: Boolean,
     ) = Occupation(id, Kind.COURSE, label, weekday, startTime, SlotRules.minutes(settings.individualCourseHours), sharedSlot)
 
-    fun bandOccupation(settings: AccountingYearSettingsEntity, id: UUID?, name: String, type: BandType, weekday: String, startTime: LocalTime) =
-        Occupation(
-            id,
-            if (type == BandType.WORKSHOP) Kind.WORKSHOP else Kind.GROUP,
-            name,
-            weekday,
-            startTime,
-            SlotRules.minutes(if (type == BandType.WORKSHOP) settings.workshopHours else settings.groupHours),
-        )
+    fun bandOccupation(
+        settings: AccountingYearSettingsEntity,
+        id: UUID?,
+        name: String,
+        type: BandType,
+        weekday: String,
+        startTime: LocalTime,
+        durationMinutes: Int?,
+    ) = Occupation(
+        id,
+        if (type == BandType.WORKSHOP) Kind.WORKSHOP else Kind.GROUP,
+        name,
+        weekday,
+        startTime,
+        if (type == BandType.WORKSHOP) SlotRules.minutes(settings.workshopHours) else durationMinutes ?: DEFAULT_GROUP_MINUTES,
+    )
 
     fun parseStartTime(value: String): LocalTime = try {
         LocalTime.parse(value)
@@ -85,6 +92,6 @@ class ScheduleService(
     private fun BandEntity.toOccupation(settings: AccountingYearSettingsEntity): Occupation? {
         val day = weekday ?: return null
         val start = startTime ?: return null
-        return bandOccupation(settings, id, name, type, day, start)
+        return bandOccupation(settings, id, name, type, day, start, durationMinutes)
     }
 }

@@ -170,12 +170,12 @@ class DataTransferService(
         data.settings.forEach { settings ->
             settings.individualCourseHours?.let { if (it <= java.math.BigDecimal.ZERO || it > java.math.BigDecimal("24")) errors += "Invalid individual course duration for year ${settings.year}." }
             settings.workshopHours?.let { if (it <= java.math.BigDecimal.ZERO || it > java.math.BigDecimal("24")) errors += "Invalid workshop duration for year ${settings.year}." }
-            settings.groupHours?.let { if (it <= java.math.BigDecimal.ZERO || it > java.math.BigDecimal("24")) errors += "Invalid group duration for year ${settings.year}." }
         }
         data.bands.forEach { band ->
             band.startTime?.let { value ->
                 if (runCatching { java.time.LocalTime.parse(value) }.isFailure) errors += "Invalid start time $value for band ${band.id ?: band.name}."
             }
+            band.durationMinutes?.let { if (it !in SlotRules.GROUP_DURATIONS) errors += "Invalid duration $it for band ${band.id ?: band.name}: 75 or 90 minutes." }
         }
         val terms = data.settings.flatMap { settings -> settings.terms.map { it to settings.year } }
         val termIds = terms.mapNotNull { it.first.id }
@@ -282,7 +282,6 @@ class DataTransferService(
                 groupMembershipFee = dto.groupMembershipFee
                 individualCourseHours = dto.individualCourseHours ?: DEFAULT_INDIVIDUAL_COURSE_HOURS
                 workshopHours = dto.workshopHours ?: DEFAULT_WORKSHOP_HOURS
-                groupHours = dto.groupHours ?: DEFAULT_GROUP_HOURS
                 schoolHolidayWeeks = mapOf("weeks" to dto.schoolHolidayWeeks)
             }
             accountingYearSettingsRepository.persist(entity).awaitSuspending()
@@ -350,6 +349,7 @@ class DataTransferService(
                 teacher = dto.teacherId?.let { teachersById.required(it, "Teacher") }
                 weekday = dto.weekday
                 startTime = dto.startTime?.let(java.time.LocalTime::parse)
+                durationMinutes = if (type == BandType.WORKSHOP) null else dto.durationMinutes
             }
             bandRepository.persist(band).awaitSuspending()
             requireNotNull(dto.id) { "Band id is required in import." }.let { bandsById[it] = band }
@@ -461,7 +461,6 @@ class DataTransferService(
         private const val LEGACY_ACCOUNTING_YEAR = 2026
         private val DEFAULT_INDIVIDUAL_COURSE_HOURS = java.math.BigDecimal("0.50")
         private val DEFAULT_WORKSHOP_HOURS = java.math.BigDecimal("1.25")
-        private val DEFAULT_GROUP_HOURS = java.math.BigDecimal("1.50")
         const val IMPORT_CONFIRMATION = "REPLACE_ALL_DATA"
         private val SUPPORTED_FORMAT_VERSIONS = setOf(1, FORMAT_VERSION)
     }

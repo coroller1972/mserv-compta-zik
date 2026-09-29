@@ -52,6 +52,10 @@ open class BandEntity : PanacheEntityBase {
     @Column(name = "start_time")
     open var startTime: LocalTime? = null
 
+    /** Groupe : 75 ou 90 minutes (90 si absent). Atelier : null, la durée annuelle workshopHours s'applique. */
+    @Column(name = "duration_minutes")
+    open var durationMinutes: Int? = null
+
     @OneToMany(mappedBy = "band")
     open var members: MutableList<BandMemberEntity> = mutableListOf()
 }

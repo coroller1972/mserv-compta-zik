@@ -32,11 +32,22 @@ class SlotRulesTest {
         assertNull(SlotRules.placementError(group("18:30")), "a group may end exactly at 20:00")
         assertNull(SlotRules.placementError(workshop("16:30")))
 
-        assertNotNull(SlotRules.placementError(course("17:15")), "off the 30-minute grid")
+        assertNull(SlotRules.placementError(course("17:15")), "quarter hours are allowed")
+        assertNotNull(SlotRules.placementError(course("17:10")), "off the 15-minute grid")
         assertNotNull(SlotRules.placementError(course("14:30")), "lunch break between the windows")
         assertNotNull(SlotRules.placementError(course("20:00")), "evening window ends at 20:00")
         assertNotNull(SlotRules.placementError(group("13:00")), "would end at 14:30, after the midday window")
         assertNotNull(SlotRules.placementError(workshop("19:00")), "would end at 20:15")
+    }
+
+    @Test
+    fun `two groups of 1h15 fill the midday window back to back`() {
+        val first = at(Kind.GROUP, "11:30", 75)
+        val second = at(Kind.GROUP, "12:45", 75)
+        assertNull(SlotRules.placementError(first))
+        assertNull(SlotRules.placementError(second), "12:45-14:00 ends with the window")
+        assertEquals(emptyList<Occupation>(), SlotRules.conflicts(second, listOf(first)))
+        assertNotNull(SlotRules.placementError(at(Kind.GROUP, "12:45", 90)), "a 1h30 group would end at 14:15")
     }
 
     @Test

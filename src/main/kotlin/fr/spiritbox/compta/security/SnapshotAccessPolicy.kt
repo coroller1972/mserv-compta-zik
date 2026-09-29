@@ -18,7 +18,6 @@ class SnapshotAccessPolicy(private val user: AuthenticatedUser) {
             teacherHourlyRate = settings.teacherHourlyRate.takeIf { financials },
             groupMembershipFee = settings.groupMembershipFee.takeIf { financials },
             individualCourseHours = settings.individualCourseHours, workshopHours = settings.workshopHours,
-            groupHours = settings.groupHours,
             schoolHolidayWeeks = settings.schoolHolidayWeeks, terms = settings.terms,
         )
     }
@@ -48,8 +47,7 @@ class SnapshotAccessPolicy(private val user: AuthenticatedUser) {
 
     fun authorizeUpdate(update: SettingsUpdate) {
         if (update.teacherHourlyRate != null || update.groupMembershipFee != null ||
-            update.individualCourseHours != null || update.workshopHours != null ||
-            update.groupHours != null) user.requirePermission("CONFIG_FINANCIALS")
+            update.individualCourseHours != null || update.workshopHours != null) user.requirePermission("CONFIG_FINANCIALS")
         if (update.terms != null) user.requirePermission("CONFIG_TERMS")
         if (update.schoolHolidayWeeks != null) user.requirePermission("CONFIG_HOLIDAYS")
         if (update.status != null || update.reviewedAt != null || update.closedAt != null) {

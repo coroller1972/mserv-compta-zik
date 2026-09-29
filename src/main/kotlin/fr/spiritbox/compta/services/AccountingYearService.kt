@@ -102,7 +102,6 @@ class AccountingYearService(
                 groupMembershipFee = sourceSettings.groupMembershipFee
                 individualCourseHours = sourceSettings.individualCourseHours
                 workshopHours = sourceSettings.workshopHours
-                groupHours = sourceSettings.groupHours
                 schoolHolidayWeeks = sourceSettings.schoolHolidayWeeks
                 terms.addAll(sourceSettings.terms.map { sourceTerm -> copiedTerm(this, sourceTerm) })
                 accountingYearSettingsRepository.persist(this).awaitSuspending()
@@ -121,7 +120,6 @@ class AccountingYearService(
                 targetSettings.groupMembershipFee = sourceSettings.groupMembershipFee
                 targetSettings.individualCourseHours = sourceSettings.individualCourseHours
                 targetSettings.workshopHours = sourceSettings.workshopHours
-                targetSettings.groupHours = sourceSettings.groupHours
                 targetSettings.schoolHolidayWeeks = sourceSettings.schoolHolidayWeeks
                 targetSettings.terms.clear()
                 targetSettings.terms.addAll(sourceSettings.terms.map { sourceTerm ->
@@ -138,6 +136,7 @@ class AccountingYearService(
                     teacher = sourceBand.teacher
                     weekday = sourceBand.weekday
                     startTime = sourceBand.startTime
+                    durationMinutes = sourceBand.durationMinutes
                 }
                 bandRepository.persist(targetBand).awaitSuspending()
                 sourceBand.members.forEach { sourceMember ->
@@ -939,7 +938,6 @@ class AccountingYearService(
             groupMembershipFee = update.groupMembershipFee ?: entity.groupMembershipFee,
             individualCourseHours = update.individualCourseHours ?: entity.individualCourseHours,
             workshopHours = update.workshopHours ?: entity.workshopHours,
-            groupHours = update.groupHours ?: entity.groupHours,
             schoolHolidayWeeks = update.schoolHolidayWeeks ?: entity.schoolHolidayWeeks["weeks"].orEmpty(),
             terms = update.terms ?: mapper.run { entity.toDto() }.terms,
         )
@@ -950,8 +948,7 @@ class AccountingYearService(
         entity.groupMembershipFee = settings.groupMembershipFee
         entity.individualCourseHours = settings.individualCourseHours ?: entity.individualCourseHours
         entity.workshopHours = settings.workshopHours ?: entity.workshopHours
-        entity.groupHours = settings.groupHours ?: entity.groupHours
-        validateDurations(entity.individualCourseHours, entity.workshopHours, entity.groupHours)
+        validateDurations(entity.individualCourseHours, entity.workshopHours)
         if (existingEntity != null) scheduleService.requireNoOverlaps(entity)
         entity.schoolHolidayWeeks = mapOf("weeks" to settings.schoolHolidayWeeks.sorted())
 
