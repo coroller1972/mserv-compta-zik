@@ -164,13 +164,16 @@ class BandService(
         val bandId = requireNotNull(band.id) { "Cannot replace members before band is persisted." }
         bandMemberRepository.delete("band.id", bandId).awaitSuspending()
 
-        musicians.forEach { musician ->
-            val member = BandMemberEntity().apply {
+        val members = musicians.map { musician ->
+            BandMemberEntity().apply {
                 this.band = band
                 this.musician = musician
             }
-            bandMemberRepository.persist(member).awaitSuspending()
         }
+        members.forEach { bandMemberRepository.persist(it).awaitSuspending() }
+        // La suppression en masse contourne la session : sans cela, la réponse relirait la collection
+        // déjà chargée et renverrait les membres d'avant la requête.
+        band.members = members.toMutableList()
     }
 
     private suspend fun getMusicians(ids: List<UUID>): List<MusicianEntity> {
