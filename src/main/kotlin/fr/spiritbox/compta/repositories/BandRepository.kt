@@ -31,6 +31,20 @@ class BandRepository : PanacheRepositoryBase<BandEntity, UUID> {
         year,
     ).list()
 
+    /** Groupes placés (jour et heure renseignés) un jour donné. */
+    fun listPlacedByDay(year: Int, weekday: String) = find(
+        """
+        select band
+        from BandEntity band
+        join fetch band.settings settings
+        where settings.year = ?1
+        and band.weekday = ?2
+        and band.startTime is not null
+        """.trimIndent(),
+        year,
+        weekday,
+    ).list()
+
     fun findByIdWithMembers(id: UUID) = find(
         """
         select distinct band

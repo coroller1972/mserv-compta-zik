@@ -1,5 +1,7 @@
 package fr.spiritbox.compta
 
+import fr.spiritbox.compta.services.DEFAULT_GROUP_MINUTES
+
 import fr.spiritbox.compta.domain.AccountingYearSettingsEntity
 import fr.spiritbox.compta.domain.AttendanceEntity
 import fr.spiritbox.compta.domain.BandEntity
@@ -95,6 +97,8 @@ class Mapper(private val snapshotAccess: SnapshotAccessPolicy) {
         type = BandType.valueOf(type.name),
         teacherId = teacher?.id,
         weekday = weekday,
+        startTime = startTime?.toString(),
+        durationMinutes = if (type == fr.spiritbox.compta.domain.BandType.WORKSHOP) null else durationMinutes ?: DEFAULT_GROUP_MINUTES,
         memberIds = members.mapNotNull { it.musician.id },
     )
 

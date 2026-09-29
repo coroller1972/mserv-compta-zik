@@ -1241,6 +1241,18 @@ components:
           format: uuid
         weekday:
           type: string
+        startTime:
+          description: Start of the booked slot (30-minute steps). Null while the band is not placed yet.
+          type: string
+          format: time
+          nullable: true
+        durationMinutes:
+          description: Room time booked by an independent group, 75 or 90 minutes (90 when omitted). Ignored for workshops, which use the year's workshopHours.
+          type: integer
+          format: int32
+          minimum: 75
+          maximum: 90
+          nullable: true
         memberIds:
           type: array
           items:

@@ -171,6 +171,12 @@ class DataTransferService(
             settings.individualCourseHours?.let { if (it <= java.math.BigDecimal.ZERO || it > java.math.BigDecimal("24")) errors += "Invalid individual course duration for year ${settings.year}." }
             settings.workshopHours?.let { if (it <= java.math.BigDecimal.ZERO || it > java.math.BigDecimal("24")) errors += "Invalid workshop duration for year ${settings.year}." }
         }
+        data.bands.forEach { band ->
+            band.startTime?.let { value ->
+                if (runCatching { java.time.LocalTime.parse(value) }.isFailure) errors += "Invalid start time $value for band ${band.id ?: band.name}."
+            }
+            band.durationMinutes?.let { if (it !in SlotRules.GROUP_DURATIONS) errors += "Invalid duration $it for band ${band.id ?: band.name}: 75 or 90 minutes." }
+        }
         val terms = data.settings.flatMap { settings -> settings.terms.map { it to settings.year } }
         val termIds = terms.mapNotNull { it.first.id }
         if (termIds.size != terms.size) errors += "Every term must have an id."
@@ -342,6 +348,8 @@ class DataTransferService(
                 type = BandType.valueOf(dto.type.name)
                 teacher = dto.teacherId?.let { teachersById.required(it, "Teacher") }
                 weekday = dto.weekday
+                startTime = dto.startTime?.let(java.time.LocalTime::parse)
+                durationMinutes = if (type == BandType.WORKSHOP) null else dto.durationMinutes
             }
             bandRepository.persist(band).awaitSuspending()
             requireNotNull(dto.id) { "Band id is required in import." }.let { bandsById[it] = band }
