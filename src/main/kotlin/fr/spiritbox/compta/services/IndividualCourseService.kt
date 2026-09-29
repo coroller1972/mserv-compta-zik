@@ -30,6 +30,7 @@ class IndividualCourseService(
     private val accountingYearSettingsRepository: AccountingYearSettingsRepository,
     private val allocationRepository: TeacherInvoiceAttendanceAllocationRepository,
     private val lifecycleService: AccountingYearLifecycleService,
+    private val scheduleService: ScheduleService,
     private val mapper: Mapper,
     private val panacheCoroutine: PanacheCoroutine,
 ) {
@@ -78,7 +79,6 @@ class IndividualCourseService(
         val year = individualCourse.year
             ?: throw BadRequestException("Individual course year is required.")
         val startTime = parseStartTime(individualCourse.startTime)
-        validateSlotAvailable(entity.id, year, individualCourse.weekday, startTime, individualCourse.sharedSlot)
 
         if (entity.id == null) {
             entity.settings = getSettings(year).also(lifecycleService::requireStructureMutable)
@@ -90,7 +90,23 @@ class IndividualCourseService(
             lifecycleService.requireStructureMutable(entity.settings)
         }
 
-        entity.musician = getMusician(individualCourse.musicianId)
+        val musician = getMusician(individualCourse.musicianId)
+        // Seuls les cours actifs d'un élève actif occupent la salle.
+        if (individualCourse.active && musician.active) {
+            scheduleService.requireAvailable(
+                entity.settings,
+                scheduleService.courseOccupation(
+                    entity.settings,
+                    entity.id,
+                    "${musician.firstName} ${musician.lastName}".trim(),
+                    individualCourse.weekday,
+                    startTime,
+                    individualCourse.sharedSlot,
+                ),
+            )
+        }
+
+        entity.musician = musician
         entity.teacher = getTeacher(individualCourse.teacherId)
         entity.instrument = individualCourse.instrument
         entity.weekday = individualCourse.weekday
@@ -99,19 +115,6 @@ class IndividualCourseService(
         entity.active = individualCourse.active
     }
 
-    private suspend fun validateSlotAvailable(
-        courseId: UUID?,
-        year: Int,
-        weekday: String,
-        startTime: LocalTime,
-        sharedSlot: Boolean,
-    ) {
-        val occupyingCourses = individualCourseRepository.listOccupyingBySlot(year, weekday, startTime).awaitSuspending()
-            .filter { it.id != courseId }
-        if (occupyingCourses.isNotEmpty() && !sharedSlot) {
-            throw BadRequestException("Slot $weekday $startTime is already occupied.")
-        }
-    }
 
     private suspend fun getIndividualCourse(id: UUID): IndividualCourseEntity =
         individualCourseRepository.findByIdWithRelations(id).awaitSuspending()

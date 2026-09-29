@@ -1073,6 +1073,12 @@ components:
           multipleOf: 0.01
           minimum: 0.01
           maximum: 24
+        groupHours:
+          description: Room time booked by an independent group (schedule only, not paid).
+          type: number
+          multipleOf: 0.01
+          minimum: 0.01
+          maximum: 24
         schoolHolidayWeeks:
           type: array
           items:
@@ -1115,6 +1121,12 @@ components:
           multipleOf: 0.01
           minimum: 0.01
           maximum: 24
+        groupHours:
+          description: Room time booked by an independent group (schedule only, not paid).
+          type: number
+          multipleOf: 0.01
+          minimum: 0.01
+          maximum: 24
         schoolHolidayWeeks:
           type: array
           items:
@@ -1151,6 +1163,12 @@ components:
           minimum: 0.01
           maximum: 24
         workshopHours:
+          type: number
+          multipleOf: 0.01
+          minimum: 0.01
+          maximum: 24
+        groupHours:
+          description: Room time booked by an independent group (schedule only, not paid).
           type: number
           multipleOf: 0.01
           minimum: 0.01
@@ -1241,6 +1259,11 @@ components:
           format: uuid
         weekday:
           type: string
+        startTime:
+          description: Start of the booked slot (30-minute steps). Null while the band is not placed yet.
+          type: string
+          format: time
+          nullable: true
         memberIds:
           type: array
           items:

@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
+import java.time.LocalTime
 import java.util.UUID
 
 @Entity
@@ -46,6 +47,10 @@ open class BandEntity : PanacheEntityBase {
 
     @Column(name = "weekday", length = 30)
     open var weekday: String? = null
+
+    /** Null : groupe « à placer », sans créneau réservé. */
+    @Column(name = "start_time")
+    open var startTime: LocalTime? = null
 
     @OneToMany(mappedBy = "band")
     open var members: MutableList<BandMemberEntity> = mutableListOf()

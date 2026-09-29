@@ -74,6 +74,7 @@ class Mapper(private val snapshotAccess: SnapshotAccessPolicy) {
         groupMembershipFee = groupMembershipFee,
         individualCourseHours = individualCourseHours,
         workshopHours = workshopHours,
+        groupHours = groupHours,
         schoolHolidayWeeks = schoolHolidayWeeks["weeks"].orEmpty().sorted(),
         terms = terms
             .sortedWith(compareBy<TermEntity> { it.displayOrder }.thenBy { it.startWeek })
@@ -95,6 +96,7 @@ class Mapper(private val snapshotAccess: SnapshotAccessPolicy) {
         type = BandType.valueOf(type.name),
         teacherId = teacher?.id,
         weekday = weekday,
+        startTime = startTime?.toString(),
         memberIds = members.mapNotNull { it.musician.id },
     )
 

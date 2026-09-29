@@ -22,6 +22,8 @@ import jakarta.ws.rs.BadRequestException
 import jakarta.ws.rs.NotFoundException
 import jakarta.ws.rs.ClientErrorException
 import jakarta.ws.rs.core.Response
+import fr.spiritbox.compta.domain.AccountingYearSettingsEntity
+import java.time.LocalTime
 import java.util.*
 
 @ApplicationScoped
@@ -33,6 +35,7 @@ class BandService(
     private val accountingYearSettingsRepository: AccountingYearSettingsRepository,
     private val allocationRepository: TeacherInvoiceAttendanceAllocationRepository,
     private val lifecycleService: AccountingYearLifecycleService,
+    private val scheduleService: ScheduleService,
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper
 ) {
@@ -50,12 +53,14 @@ class BandService(
 
         val settings = getSettings(requireYear(band.year))
         lifecycleService.requireStructureMutable(settings)
+        val startTime = requirePlacement(settings, null, band)
         val entity = BandEntity().apply {
             this.settings = settings
             name = band.name
             type = BandType.valueOf(band.type.name)
             teacher = band.teacherId?.let { getTeacher(it) }
             weekday = band.weekday
+            this.startTime = startTime
         }
         bandRepository.persist(entity).awaitSuspending()
         replaceMembers(entity, band.memberIds)
@@ -90,13 +95,26 @@ class BandService(
         lifecycleService.requireStructureMutable(entity.settings)
         requireSameYear(entity, requireYear(band.year))
         if (entity.teacher?.id != band.teacherId || entity.type.name != band.type.name) requireNotAllocated(entity)
+        val startTime = requirePlacement(entity.settings, id, band)
         entity.name = band.name
         entity.type = BandType.valueOf(band.type.name)
         entity.teacher = band.teacherId?.let { getTeacher(it) }
         entity.weekday = band.weekday
+        entity.startTime = startTime
         replaceMembers(entity, band.memberIds)
 
         mapper.run { getBand(id).toDto() }
+    }
+
+    /** Heure de début validée (grille, plage, chevauchements), ou null si le groupe reste « à placer ». */
+    private suspend fun requirePlacement(settings: AccountingYearSettingsEntity, id: UUID?, band: Band): LocalTime? {
+        val startTime = band.startTime?.let(scheduleService::parseStartTime) ?: return null
+        val weekday = band.weekday ?: throw BadRequestException("A band start time requires a weekday.")
+        scheduleService.requireAvailable(
+            settings,
+            scheduleService.bandOccupation(settings, id, band.name, BandType.valueOf(band.type.name), weekday, startTime),
+        )
+        return startTime
     }
 
     private suspend fun getTeacher(id: UUID): TeacherEntity =

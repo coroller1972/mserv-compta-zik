@@ -72,6 +72,7 @@ class AccountingYearService(
     private val allocationRepository: TeacherInvoiceAttendanceAllocationRepository,
     private val adjustmentRepository: TeacherBillingAdjustmentRepository,
     private val lifecycleService: AccountingYearLifecycleService,
+    private val scheduleService: ScheduleService,
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper,
     private val htmlPdfService: HtmlPdfService,
@@ -101,6 +102,7 @@ class AccountingYearService(
                 groupMembershipFee = sourceSettings.groupMembershipFee
                 individualCourseHours = sourceSettings.individualCourseHours
                 workshopHours = sourceSettings.workshopHours
+                groupHours = sourceSettings.groupHours
                 schoolHolidayWeeks = sourceSettings.schoolHolidayWeeks
                 terms.addAll(sourceSettings.terms.map { sourceTerm -> copiedTerm(this, sourceTerm) })
                 accountingYearSettingsRepository.persist(this).awaitSuspending()
@@ -119,6 +121,7 @@ class AccountingYearService(
                 targetSettings.groupMembershipFee = sourceSettings.groupMembershipFee
                 targetSettings.individualCourseHours = sourceSettings.individualCourseHours
                 targetSettings.workshopHours = sourceSettings.workshopHours
+                targetSettings.groupHours = sourceSettings.groupHours
                 targetSettings.schoolHolidayWeeks = sourceSettings.schoolHolidayWeeks
                 targetSettings.terms.clear()
                 targetSettings.terms.addAll(sourceSettings.terms.map { sourceTerm ->
@@ -134,6 +137,7 @@ class AccountingYearService(
                     type = sourceBand.type
                     teacher = sourceBand.teacher
                     weekday = sourceBand.weekday
+                    startTime = sourceBand.startTime
                 }
                 bandRepository.persist(targetBand).awaitSuspending()
                 sourceBand.members.forEach { sourceMember ->
@@ -935,6 +939,7 @@ class AccountingYearService(
             groupMembershipFee = update.groupMembershipFee ?: entity.groupMembershipFee,
             individualCourseHours = update.individualCourseHours ?: entity.individualCourseHours,
             workshopHours = update.workshopHours ?: entity.workshopHours,
+            groupHours = update.groupHours ?: entity.groupHours,
             schoolHolidayWeeks = update.schoolHolidayWeeks ?: entity.schoolHolidayWeeks["weeks"].orEmpty(),
             terms = update.terms ?: mapper.run { entity.toDto() }.terms,
         )
@@ -945,7 +950,9 @@ class AccountingYearService(
         entity.groupMembershipFee = settings.groupMembershipFee
         entity.individualCourseHours = settings.individualCourseHours ?: entity.individualCourseHours
         entity.workshopHours = settings.workshopHours ?: entity.workshopHours
-        validateDurations(entity.individualCourseHours, entity.workshopHours)
+        entity.groupHours = settings.groupHours ?: entity.groupHours
+        validateDurations(entity.individualCourseHours, entity.workshopHours, entity.groupHours)
+        if (existingEntity != null) scheduleService.requireNoOverlaps(entity)
         entity.schoolHolidayWeeks = mapOf("weeks" to settings.schoolHolidayWeeks.sorted())
 
         val existingTermsById = entity.terms.mapNotNull { term -> term.id?.let { it to term } }.toMap()
@@ -1028,10 +1035,9 @@ class AccountingYearService(
 
     private fun BigDecimal.toHours() = BillingCalculator.run { toHours() }
 
-    private fun validateDurations(individual: BigDecimal, workshop: BigDecimal) {
-        if (individual <= BigDecimal.ZERO || individual > BigDecimal("24.00") ||
-            workshop <= BigDecimal.ZERO || workshop > BigDecimal("24.00")) {
-            throw BadRequestException("Billing durations must be greater than 0 and at most 24 hours.")
+    private fun validateDurations(vararg durations: BigDecimal) {
+        if (durations.any { it <= BigDecimal.ZERO || it > BigDecimal("24.00") }) {
+            throw BadRequestException("Durations must be greater than 0 and at most 24 hours.")
         }
     }
 

@@ -73,6 +73,23 @@ class IndividualCourseRepository : PanacheRepositoryBase<IndividualCourseEntity,
         startTime,
     ).list()
 
+    /** Cours qui occupent la salle un jour donné (actifs, élève actif). */
+    fun listOccupyingByDay(year: Int, weekday: String) = find(
+        """
+        select course
+        from IndividualCourseEntity course
+        join fetch course.settings settings
+        join fetch course.musician musician
+        join fetch course.teacher
+        where settings.year = ?1
+        and course.weekday = ?2
+        and course.active = true
+        and musician.active = true
+        """.trimIndent(),
+        year,
+        weekday,
+    ).list()
+
     fun listByMusician(musicianId: UUID) = find(
         """
         select course

@@ -52,6 +52,10 @@ open class AccountingYearSettingsEntity : PanacheEntityBase {
     @Column(name = "workshop_hours", nullable = false, precision = 5, scale = 2)
     open var workshopHours: BigDecimal = BigDecimal("1.25")
 
+    /** Durée d'occupation de la salle par un groupe (planning uniquement, pas de rémunération). */
+    @Column(name = "group_hours", nullable = false, precision = 5, scale = 2)
+    open var groupHours: BigDecimal = BigDecimal("1.50")
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "school_holiday_weeks", nullable = false, columnDefinition = "jsonb")
     open var schoolHolidayWeeks: Map<String, List<Int>> = mapOf("weeks" to emptyList())
