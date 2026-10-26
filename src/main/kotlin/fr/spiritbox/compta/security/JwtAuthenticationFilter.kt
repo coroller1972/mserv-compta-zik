@@ -110,6 +110,8 @@ private val endpointPermissions =
         EndpointPermission("GET", Regex("""accounting-years/\d+/expenses$"""), listOf("EXPENSES_READ")),
         EndpointPermission("POST", Regex("""accounting-years/\d+/expenses$"""), listOf("EXPENSES_WRITE")),
         EndpointPermission("PUT", Regex("""attendance$"""), listOf("PRESENCE_WRITE")),
+        // PRESENCE_WRITE est vérifiée en plus par le service.
+        EndpointPermission("POST", Regex("""attendance/post-billing-corrections$"""), listOf("BILLING_PRINT")),
         EndpointPermission("GET", Regex("""teachers$"""), listOf("CONFIG_TEACHER")),
         EndpointPermission("POST", Regex("""teachers$"""), listOf("CONFIG_TEACHER")),
         EndpointPermission("PUT", Regex("""teachers/[^/]+$"""), listOf("CONFIG_TEACHER")),

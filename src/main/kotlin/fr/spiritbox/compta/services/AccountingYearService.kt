@@ -362,6 +362,7 @@ class AccountingYearService(
                 billingLocked = allocation != null,
                 billingDocumentId = allocation?.document?.id,
                 billingDocumentNumber = allocation?.document?.documentNumber,
+                billingDocumentStatus = allocation?.document?.status?.let { fr.spiritbox.compta.openapi.model.GeneratedDocumentStatus.valueOf(it.name) },
             )
         }
     }

@@ -11,6 +11,10 @@ class TeacherInvoiceAttendanceAllocationRepository : PanacheRepositoryBase<Teach
     fun listActiveByAttendanceIds(ids: Collection<UUID>) = find(
         "select a from TeacherInvoiceAttendanceAllocationEntity a join fetch a.document where a.releasedAt is null and a.attendance.id in ?1", ids
     ).list()
+    /** Allocations actives avec la demande et son professeur (correction après facturation). */
+    fun listActiveWithTeacherByAttendanceIds(ids: Collection<UUID>) = find(
+        "select a from TeacherInvoiceAttendanceAllocationEntity a join fetch a.document d left join fetch d.teacher where a.releasedAt is null and a.attendance.id in ?1", ids
+    ).list()
     fun findActiveByAttendanceId(id: UUID) = find(
         "select a from TeacherInvoiceAttendanceAllocationEntity a join fetch a.document where a.releasedAt is null and a.attendance.id = ?1", id
     ).firstResult()
