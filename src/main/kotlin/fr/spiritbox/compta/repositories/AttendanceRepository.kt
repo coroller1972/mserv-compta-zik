@@ -29,6 +29,10 @@ class AttendanceRepository : PanacheRepositoryBase<AttendanceEntity, UUID> {
         year,
     ).list()
 
+    fun listByIdsWithSettings(ids: Collection<UUID>) = find(
+        "select a from AttendanceEntity a join fetch a.term term join fetch term.settings where a.id in ?1", ids
+    ).list()
+
     fun listByAccountingYearAndTerm(year: Int, termId: UUID) = find(
         """
         select attendance
