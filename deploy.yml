@@ -117,6 +117,8 @@ metadata:
   name: mserv-compta-zik-api
   labels:
     app: compta-zik-app
+  annotations:
+    haproxy.router.openshift.io/hsts_header: max-age=31536000;includeSubDomains
 spec:
   host: compta-zik-frontend-ui-core.apps.dev-app-hub.0k6e.p1.openshiftapps.com
   path: /api

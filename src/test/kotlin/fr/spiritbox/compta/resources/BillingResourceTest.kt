@@ -55,6 +55,17 @@ class BillingResourceTest {
             .then()
             .statusCode(200)
 
+        // L'import destructif est journalisé avec l'identifiant vérifié, pas le nom affiché.
+        given()
+            .header("Authorization", "Bearer ${administratorToken()}")
+            .get("/audit-events?limit=20")
+            .then()
+            .statusCode(200)
+            .body("find { it.action == 'IMPORTED' }.entityType", equalTo("DATA"))
+            .body("find { it.action == 'IMPORTED' }.userId", equalTo("billing-test"))
+            .body("find { it.action == 'IMPORTED' }.details.actorDisplayName", equalTo("Security test"))
+            .body("find { it.action == 'IMPORTED' }.details.musicians", equalTo(1))
+
         val invalidTransfer = referenceDataTransfer.replace("\"week\": 2", "\"week\": 1")
         given()
             .header("Authorization", "Bearer ${administratorToken()}")

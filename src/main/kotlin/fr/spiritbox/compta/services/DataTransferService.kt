@@ -56,6 +56,7 @@ class DataTransferService(
     private val panacheCoroutine: PanacheCoroutine,
     private val mapper: Mapper,
     private val backupService: BackupService,
+    private val auditService: AuditService,
 ) {
     suspend fun exportData(): DataTransfer = panacheCoroutine.withSession {
         DataTransfer(
@@ -101,6 +102,7 @@ class DataTransferService(
         return panacheCoroutine.withExclusiveTransaction {
             val backupFile = backupService.createWithinTransaction("before-import").fileName
 
+            val deletedDocuments = generatedDocumentRepository.count().awaitSuspending()
             clearBusinessData()
 
             val importedSettings = importSettings(dataTransfer.settings)
@@ -123,7 +125,7 @@ class DataTransferService(
             importAttendance(dataTransfer.attendance, importedSettings.termsById, individualCoursesById, bandsById)
             importExpenses(dataTransfer.expenses)
 
-            DataImportResult(
+            val result = DataImportResult(
                 importedAt = OffsetDateTime.now(ZoneOffset.UTC),
                 settings = dataTransfer.settings.size,
                 teachers = dataTransfer.teachers.size,
@@ -134,6 +136,18 @@ class DataTransferService(
                 expenses = dataTransfer.expenses.size,
                 backupFile = backupFile,
             )
+            // L'import efface aussi les documents : il doit rester traçable comme une restauration.
+            auditService.record(
+                "DATA", null, "IMPORTED",
+                mapOf(
+                    "backupFile" to backupFile, "formatVersion" to dataTransfer.formatVersion,
+                    "deletedDocuments" to deletedDocuments, "settings" to result.settings,
+                    "teachers" to result.teachers, "musicians" to result.musicians, "bands" to result.bands,
+                    "individualCourses" to result.individualCourses, "attendance" to result.attendance,
+                    "expenses" to result.expenses,
+                ),
+            )
+            result
         }
     }
 
