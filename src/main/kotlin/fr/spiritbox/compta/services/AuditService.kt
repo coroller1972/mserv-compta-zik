@@ -1,6 +1,8 @@
 package fr.spiritbox.compta.services
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import fr.spiritbox.compta.domain.AuditEventEntity
 import fr.spiritbox.compta.repositories.AuditEventRepository
 import fr.spiritbox.compta.security.AuthenticatedUser
@@ -37,8 +39,16 @@ class AuditService(
             this.entityType = entityType
             this.entityId = entityId
             this.action = action
-            userId = authenticatedUser.displayName
-            this.details = objectMapper.valueToTree(details)
+            // Identifiant vérifié par Identity : le nom affiché est modifiable par l'utilisateur.
+            userId = authenticatedUser.userId
+            this.details = objectMapper.valueToTree<JsonNode>(details).let { node ->
+                if (node is ObjectNode) node.put(ACTOR_DISPLAY_NAME, authenticatedUser.displayName) else node
+            }
         }).awaitSuspending()
+    }
+
+    private companion object {
+        /** Nom affiché au moment de l'action, informatif uniquement. */
+        const val ACTOR_DISPLAY_NAME = "actorDisplayName"
     }
 }
