@@ -39,6 +39,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -47,3 +48,23 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # Reference immuable a recopier dans le champ image: du Deployment (console OpenShift).
+      - name: Publish image reference
+        env:
+          IMAGE: ghcr.io/coroller1972/mserv-compta-zik
+          DIGEST: ${{ steps.build.outputs.digest }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          {
+            echo "### Image publiée"
+            echo
+            echo "À coller dans le champ \`image:\` du Deployment :"
+            echo
+            echo '```'
+            echo "${IMAGE}@${DIGEST}"
+            echo '```'
+            echo
+            echo "Même image, par étiquette de commit : \`${IMAGE}:${COMMIT}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          echo "::notice title=Image publiée::${IMAGE}@${DIGEST}"
