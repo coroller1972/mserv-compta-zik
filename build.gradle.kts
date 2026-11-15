@@ -37,6 +37,27 @@ dependencies {
     testImplementation("io.rest-assured:rest-assured")
 }
 
+// Security patches missing from the Quarkus platform (checked 2026-11-15 against 3.38.3,
+// and still missing from 3.40.1 for Vert.x): Vert.x < 4.5.35, Netty < 4.1.138 and
+// jackson-databind 2.22.0 carry CVEs scored 7 or more. Each rule only raises the patch
+// level of the platform's own line; remove it once quarkusPlatformVersion ships these.
+// Same rules as mserv-identity.
+configurations.configureEach {
+    resolutionStrategy.eachDependency {
+        val version = requested.version ?: return@eachDependency
+        when {
+            requested.group == "io.vertx" && version.startsWith("4.5.") ->
+                useVersion("4.5.36").also { because("Vert.x CVE-2026-102460 and related, fixed in 4.5.35") }
+            requested.group == "io.netty" && version.startsWith("4.1.") ->
+                useVersion("4.1.140.Final").also { because("Netty CVE-2026-89044 and related, fixed in 4.1.138") }
+            requested.group.startsWith("com.fasterxml.jackson") &&
+                requested.name != "jackson-annotations" &&
+                version.startsWith("2.22.") ->
+                useVersion("2.22.4").also { because("jackson-databind CVE-2026-54515 in 2.22.0") }
+        }
+    }
+}
+
 group = "fr.spiritbox"
 version = "1.0.0-SNAPSHOT"
 
